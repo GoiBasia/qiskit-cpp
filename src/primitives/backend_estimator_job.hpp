@@ -27,6 +27,11 @@
 #include "primitives/containers/estimator_primitive_result.hpp"
 #include "providers/job.hpp"
 
+// Windows headers can define ERROR after jobstatus.hpp has already been parsed.
+#ifdef ERROR
+#undef ERROR
+#endif
+
 namespace Qiskit {
 namespace primitives {
 

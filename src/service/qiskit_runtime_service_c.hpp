@@ -25,6 +25,9 @@
 #ifdef _MSC_VER
 #define NOMINMAX
 #include <windows.h>
+#ifdef ERROR
+#undef ERROR
+#endif
 #else
 #include <thread>
 #include <chrono>
@@ -137,5 +140,4 @@ protected:
 } // namespace Qiskit
 
 #endif //__qiskitcpp_providers_qiskit_runtime_service_c_def_hpp__
-
 

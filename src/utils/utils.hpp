@@ -25,6 +25,9 @@
 #elif defined(_MSC_VER)
 #define NOMINMAX
 #include <windows.h>
+#ifdef ERROR
+#undef ERROR
+#endif
 #endif
 
 namespace Qiskit {

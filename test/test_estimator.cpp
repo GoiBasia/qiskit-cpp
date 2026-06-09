@@ -29,6 +29,11 @@
 #include "providers/qrmi_estimator_payload.hpp"
 #include "quantum_info/sparse_observable.hpp"
 
+// Windows headers can define ERROR after jobstatus.hpp has already been parsed.
+#ifdef ERROR
+#undef ERROR
+#endif
+
 using namespace Qiskit;
 using namespace Qiskit::circuit;
 using namespace Qiskit::primitives;
@@ -137,11 +142,11 @@ public:
     }
 };
 
-static nlohmann::ordered_json estimator_result(double ev, double std, int shots, double target_precision)
+static nlohmann::ordered_json estimator_result(double ev, double stddev, int shots, double target_precision)
 {
     nlohmann::ordered_json result;
     result["data"]["evs"] = ev;
-    result["data"]["stds"] = std;
+    result["data"]["stds"] = stddev;
     result["metadata"]["shots"] = shots;
     result["metadata"]["target_precision"] = target_precision;
     return result;
