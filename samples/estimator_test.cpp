@@ -38,50 +38,6 @@ using namespace Qiskit::service;
 
 using Estimator = BackendEstimatorV2;
 
-namespace {
-
-std::string apply_layout_to_pauli_label(const std::string& label, const reg_t& layout, uint_t output_width)
-{
-    if (layout.empty()) {
-        if (label.size() != output_width) {
-            throw std::invalid_argument("Estimator observable width must match the circuit width.");
-        }
-        return label;
-    }
-
-    if (layout.size() < label.size()) {
-        throw std::invalid_argument("Transpile layout is smaller than the observable width.");
-    }
-
-    std::string mapped_label(output_width, 'I');
-    const uint_t input_width = label.size();
-    for (uint_t logical = 0; logical < input_width; logical++) {
-        const uint_t physical = layout[logical];
-        if (physical >= output_width) {
-            throw std::invalid_argument("Transpile layout maps outside the circuit width.");
-        }
-        mapped_label[output_width - 1 - physical] = label[input_width - 1 - logical];
-    }
-    return mapped_label;
-}
-
-std::vector<std::pair<std::string, std::complex<double>>> apply_layout_to_terms(
-    const std::vector<std::pair<std::string, std::complex<double>>>& terms,
-    const reg_t& layout,
-    uint_t output_width)
-{
-    std::vector<std::pair<std::string, std::complex<double>>> mapped_terms;
-    mapped_terms.reserve(terms.size());
-    for (const auto& term : terms) {
-        mapped_terms.push_back(std::make_pair(
-            apply_layout_to_pauli_label(term.first, layout, output_width),
-            term.second));
-    }
-    return mapped_terms;
-}
-
-} // namespace
-
 int main()
 {
     QuantumCircuit circ(2, 0);
@@ -96,10 +52,10 @@ int main()
     auto backend = service.backend("ibm_kingston");
     auto estimator = Estimator(backend);
     auto transpiled_circ = transpile(circ, backend);
-    auto mapped_terms = apply_layout_to_terms(terms, transpiled_circ.get_qubit_map(), transpiled_circ.num_qubits());
-    auto observable = SparseObservable::from_list(mapped_terms, transpiled_circ.num_qubits());
+    auto observable = SparseObservable::from_list(terms);
+    auto mapped_observable = observable.apply_layout(transpiled_circ.get_qubit_map());
 
-    auto job = estimator.run({EstimatorPub(transpiled_circ, observable)}, 0.02);
+    auto job = estimator.run({EstimatorPub(transpiled_circ, mapped_observable)}, 0.02);
     if (job == nullptr) {
         return -1;
     }

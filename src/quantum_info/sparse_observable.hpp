@@ -341,6 +341,18 @@ public:
         qk_str_free(str);
         return ret;
     }
+
+    SparseObservable apply_layout(const reg_t& layout)
+    {
+        std::vector<uint32_t> layout32(layout.size());
+        for (size_t i = 0; i< layout.size(); i++) {
+            layout32[i] = (uint32_t)layout[i];
+        }
+        SparseObservable ret;
+        ret.obs_ = qk_obs_copy(obs_);
+        qk_obs_apply_layout(ret.obs_, layout32.data(), (uint32_t)layout32.size());
+        return ret;
+    }
 };
 
 } // namespace quantum_info
