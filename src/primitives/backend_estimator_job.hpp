@@ -17,13 +17,8 @@
 #ifndef __qiskitcpp_primitives_backend_estimator_job_def_hpp__
 #define __qiskitcpp_primitives_backend_estimator_job_def_hpp__
 
-#ifdef _MSC_VER
-#define NOMINMAX
-#include <windows.h>
-#else
 #include <chrono>
 #include <thread>
-#endif
 
 #include <memory>
 #include <stdexcept>
@@ -138,11 +133,7 @@ public:
             if (is_final_state(st)) {
                 break;
             }
-#ifdef _MSC_VER
-            Sleep(1);
-#else
             std::this_thread::sleep_for(std::chrono::seconds(1));
-#endif
         }
 
         if (st != providers::JobStatus::DONE) {
