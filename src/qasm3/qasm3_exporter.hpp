@@ -20,6 +20,7 @@
 #include <algorithm>
 #include <cassert>
 #include <cstddef>
+#include <cctype>
 #include <cstring>
 #include <iomanip>
 #include <set>
@@ -110,12 +111,12 @@ private:
 	std::vector<std::string> default_parameter_names(circuit::QuantumCircuit &circuit) const
 	{
 		const auto num_symbols = qk_circuit_num_param_symbols(circuit.rust_circuit_.get());
-		if (circuit.parameter_symbols_.size() != static_cast<std::size_t>(num_symbols)) {
+		if (num_symbols != 0) {
 			throw std::runtime_error(
-				"OpenQASM 3 export cannot recover circuit parameter names; "
-				"call Qiskit::qasm3::dumps(circuit, parameter_names)");
+				"automatic OpenQASM 3 parameter-name export requires qk_circuit_param_symbol_name from Qiskit. "
+				"Use Qiskit::qasm3::dumps(circuit, parameter_names) for now.");
 		}
-		return circuit.parameter_symbols_;
+		return {};
 	}
 
 	void validate_parameter_names(circuit::QuantumCircuit &circuit, const std::vector<std::string> &parameter_names) const
@@ -132,6 +133,16 @@ private:
 			}
 			if (!seen.insert(name).second) {
 				throw std::invalid_argument("OpenQASM 3 parameter names cannot contain duplicates");
+			}
+			const auto first = static_cast<unsigned char>(name[0]);
+			if (!std::isalpha(first) && name[0] != '_') {
+				throw std::invalid_argument("invalid OpenQASM identifier: " + name);
+			}
+			for (const auto ch : name) {
+				const auto value = static_cast<unsigned char>(ch);
+				if (!std::isalnum(value) && ch != '_') {
+					throw std::invalid_argument("invalid OpenQASM identifier: " + name);
+				}
 			}
 		}
 	}

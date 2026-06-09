@@ -22,10 +22,8 @@
 #include <iostream>
 #include <vector>
 #include <algorithm>
-#include <cctype>
 #include <iomanip>
 #include <cstring>
-#include <map>
 #include <cassert>
 
 #include "utils/types.hpp"
@@ -94,147 +92,11 @@ protected:
 
 	reg_t qubit_map_;									 // qubit map caused by transpiling
 	std::vector<std::pair<uint_t, uint_t>> measure_map_; // a list of pair of qubit and clbit for measure
-	std::vector<std::string> parameter_symbols_;         // ordered names of parameters used in this circuit
-	std::map<uint_t, std::vector<std::vector<std::string>>> instruction_parameter_symbols_;
-
-	void register_parameter_symbol(const std::string &symbol)
-	{
-		if (std::find(parameter_symbols_.begin(), parameter_symbols_.end(), symbol) == parameter_symbols_.end()) {
-			parameter_symbols_.push_back(symbol);
-		}
-	}
-
-	void register_parameter(const Parameter &parameter)
-	{
-		for (const auto &symbol : parameter.parameter_symbols_) {
-			register_parameter_symbol(symbol);
-		}
-	}
-
-	void register_parameters(void) {}
 
 	template <typename... Params>
-	void register_parameters(const Parameter &parameter, const Params &...parameters)
+	QkExitCode add_parameterized_gate(QkGate gate, const std::uint32_t *qubits, QkParam **params, const Params &...)
 	{
-		register_parameter(parameter);
-		register_parameters(parameters...);
-	}
-
-	void register_parameters(const std::vector<Parameter> &parameters)
-	{
-		for (const auto &parameter : parameters) {
-			register_parameter(parameter);
-		}
-	}
-
-	void merge_parameter_symbols(const std::vector<std::string> &symbols)
-	{
-		for (const auto &symbol : symbols) {
-			register_parameter_symbol(symbol);
-		}
-	}
-
-	void append_parameter_symbol_groups(std::vector<std::vector<std::string>> &groups) const {}
-
-	template <typename... Params>
-	void append_parameter_symbol_groups(
-		std::vector<std::vector<std::string>> &groups,
-		const Parameter &parameter,
-		const Params &...parameters) const
-	{
-		groups.push_back(parameter.parameter_symbols_);
-		append_parameter_symbol_groups(groups, parameters...);
-	}
-
-	template <typename... Params>
-	std::vector<std::vector<std::string>> parameter_symbol_groups(const Params &...parameters) const
-	{
-		std::vector<std::vector<std::string>> groups;
-		append_parameter_symbol_groups(groups, parameters...);
-		return groups;
-	}
-
-	std::vector<std::vector<std::string>> parameter_symbol_groups(const std::vector<Parameter> &parameters) const
-	{
-		std::vector<std::vector<std::string>> groups;
-		for (const auto &parameter : parameters) {
-			groups.push_back(parameter.parameter_symbols_);
-		}
-		return groups;
-	}
-
-	void record_instruction_parameter_symbols(
-		const uint_t instruction_index,
-		const std::vector<std::vector<std::string>> &symbols)
-	{
-		bool has_symbols = false;
-		for (const auto &group : symbols) {
-			if (!group.empty()) {
-				has_symbols = true;
-				break;
-			}
-		}
-		if (has_symbols) {
-			instruction_parameter_symbols_[instruction_index] = symbols;
-		}
-	}
-
-	void record_latest_instruction_parameter_symbols(const std::vector<std::vector<std::string>> &symbols)
-	{
-		const auto nops = qk_circuit_num_instructions(rust_circuit_.get());
-		if (nops > 0) {
-			record_instruction_parameter_symbols(static_cast<uint_t>(nops - 1), symbols);
-		}
-	}
-
-	static bool is_parameter_symbol_char(unsigned char c)
-	{
-		return std::isalnum(c) || c == '_';
-	}
-
-	static bool parameter_expression_contains_symbol(const std::string &expression, const std::string &symbol)
-	{
-		if (symbol.empty()) {
-			return false;
-		}
-		auto pos = expression.find(symbol);
-		while (pos != std::string::npos) {
-			const auto end = pos + symbol.size();
-			const bool left_boundary = pos == 0 || !is_parameter_symbol_char(static_cast<unsigned char>(expression[pos - 1]));
-			const bool right_boundary = end == expression.size() || !is_parameter_symbol_char(static_cast<unsigned char>(expression[end]));
-			if (left_boundary && right_boundary) {
-				return true;
-			}
-			pos = expression.find(symbol, pos + symbol.size());
-		}
-		return false;
-	}
-
-	std::vector<std::string> infer_parameter_symbols(QkParam *parameter) const
-	{
-		std::vector<std::string> symbols;
-		char *expression_cstr = qk_param_str(parameter);
-		std::string expression = expression_cstr;
-		qk_str_free(expression_cstr);
-
-		for (const auto &symbol : parameter_symbols_) {
-			if (parameter_expression_contains_symbol(expression, symbol)) {
-				symbols.push_back(symbol);
-			}
-		}
-		return symbols;
-	}
-
-
-	template <typename... Params>
-	QkExitCode add_parameterized_gate(QkGate gate, const std::uint32_t *qubits, QkParam **params, const Params &...parameters)
-	{
-		auto result = qk_circuit_parameterized_gate(rust_circuit_.get(), gate, qubits, params);
-		if (result == QkExitCode_Success) {
-			register_parameters(parameters...);
-			record_latest_instruction_parameter_symbols(parameter_symbol_groups(parameters...));
-		}
-		return result;
+		return qk_circuit_parameterized_gate(rust_circuit_.get(), gate, qubits, params);
 	}
 public:
 	/// @brief Create a new QuantumCircuit
@@ -353,8 +215,6 @@ public:
 
 		measure_map_ = circ.measure_map_;
 		qubit_map_ = circ.qubit_map_;
-		parameter_symbols_ = circ.parameter_symbols_;
-		instruction_parameter_symbols_ = circ.instruction_parameter_symbols_;
 	}
 
 	~QuantumCircuit()
@@ -433,8 +293,6 @@ public:
 
 		copied.measure_map_ = measure_map_;
 		copied.qubit_map_ = qubit_map_;
-		copied.parameter_symbols_ = parameter_symbols_;
-		copied.instruction_parameter_symbols_ = instruction_parameter_symbols_;
 		return copied;
 	}
 
@@ -1514,13 +1372,7 @@ public:
 				} else if (kind == QkOperationKind_Barrier) {
 					qk_circuit_barrier(rust_circuit_.get(), vqubits.data(), (uint32_t)vqubits.size());
 				} else if (kind == QkOperationKind_Gate) {
-					auto result = qk_circuit_parameterized_gate(rust_circuit_.get(), name_map[op->name].gate_map(), vqubits.data(), op->params);
-					if (result == QkExitCode_Success) {
-						auto source_symbols = circ.instruction_parameter_symbols_.find(i);
-						if (source_symbols != circ.instruction_parameter_symbols_.end()) {
-							record_latest_instruction_parameter_symbols(source_symbols->second);
-						}
-					}
+					qk_circuit_parameterized_gate(rust_circuit_.get(), name_map[op->name].gate_map(), vqubits.data(), op->params);
 				} else if (kind == QkOperationKind_Unitary) {
 					// TO DO : how we can get unitary matrix from Rust ?
 				}
@@ -1530,7 +1382,6 @@ public:
 		for (auto m : circ.measure_map_) {
 			measure_map_.push_back(m);
 		}
-		merge_parameter_symbols(circ.parameter_symbols_);
 	}
 
 	/// @brief append a gate at the end of the circuit
@@ -1551,11 +1402,7 @@ public:
 					for (auto &p : op.params()) {
 						params.push_back(p.qiskit_param_.get());
 					}
-					auto result = qk_circuit_parameterized_gate(rust_circuit_.get(), op.gate_map(), vqubits.data(), params.data());
-					if (result == QkExitCode_Success) {
-						register_parameters(op.params());
-						record_latest_instruction_parameter_symbols(parameter_symbol_groups(op.params()));
-					}
+					qk_circuit_parameterized_gate(rust_circuit_.get(), op.gate_map(), vqubits.data(), params.data());
 				}
 				else
 					qk_circuit_gate(rust_circuit_.get(), op.gate_map(), vqubits.data(), nullptr);
@@ -1584,11 +1431,7 @@ public:
 					for (auto &p : op.params()) {
 						params.push_back(p.qiskit_param_.get());
 					}
-					auto result = qk_circuit_parameterized_gate(rust_circuit_.get(), op.gate_map(), qubits.data(), params.data());
-					if (result == QkExitCode_Success) {
-						register_parameters(op.params());
-						record_latest_instruction_parameter_symbols(parameter_symbol_groups(op.params()));
-					}
+					qk_circuit_parameterized_gate(rust_circuit_.get(), op.gate_map(), qubits.data(), params.data());
 				}
 				else
 					qk_circuit_gate(rust_circuit_.get(), op.gate_map(), qubits.data(), nullptr);
@@ -1622,11 +1465,7 @@ public:
 				for (auto &p : inst.instruction().params()) {
 					params.push_back(p.qiskit_param_.get());
 				}
-				auto result = qk_circuit_parameterized_gate(rust_circuit_.get(), inst.instruction().gate_map(), vqubits.data(), params.data());
-				if (result == QkExitCode_Success) {
-					register_parameters(inst.instruction().params());
-					record_latest_instruction_parameter_symbols(parameter_symbol_groups(inst.instruction().params()));
-				}
+				qk_circuit_parameterized_gate(rust_circuit_.get(), inst.instruction().gate_map(), vqubits.data(), params.data());
 			}
 			else
 				qk_circuit_gate(rust_circuit_.get(), inst.instruction().gate_map(), vqubits.data(), nullptr);
@@ -1684,15 +1523,9 @@ public:
 
 				std::vector<Parameter> params;
 				if (op->num_params > 0) {
-					const auto metadata = instruction_parameter_symbols_.find(i);
 					params.resize(op->num_params);
 					for (int j = 0; j < op->num_params; j++) {
 						params[j] = Parameter(qk_param_copy(op->params[j]));
-						if (metadata != instruction_parameter_symbols_.end() && static_cast<std::size_t>(j) < metadata->second.size()) {
-							params[j].parameter_symbols_ = metadata->second[j];
-						} else {
-							params[j].parameter_symbols_ = infer_parameter_symbols(op->params[j]);
-						}
 					}
 				}
 			std::string name = op->name;

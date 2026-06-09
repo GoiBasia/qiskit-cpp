@@ -37,16 +37,6 @@ class Parameter
     friend class QuantumCircuit;
 protected:
     std::shared_ptr<qiskit_param> qiskit_param_ = nullptr;
-    std::vector<std::string> parameter_symbols_;
-
-    void merge_parameter_symbols(const Parameter &rhs)
-    {
-        for (const auto &symbol : rhs.parameter_symbols_) {
-            if (std::find(parameter_symbols_.begin(), parameter_symbols_.end(), symbol) == parameter_symbols_.end()) {
-                parameter_symbols_.push_back(symbol);
-            }
-        }
-    }
 public:
     /// @brief Create a new Parameter
     Parameter()
@@ -80,7 +70,6 @@ public:
     Parameter(std::string name)
     {
         qiskit_param_ = std::shared_ptr<qiskit_param>(qk_param_new_symbol((char *)name.c_str()), qk_param_free);
-        parameter_symbols_.push_back(name);
     }
 
     /// @brief Create a new Parameter from other Parameter
@@ -89,7 +78,6 @@ public:
     {
         // copying reference
         qiskit_param_ = prm.qiskit_param_;
-        parameter_symbols_ = prm.parameter_symbols_;
     }
 
     /// @brief Create a new Parameter from QkParam
@@ -129,7 +117,6 @@ public:
     {
         Parameter ret;
         qk_param_neg(ret.qiskit_param_.get(), qiskit_param_.get());
-        ret.parameter_symbols_ = parameter_symbols_;
         return ret;
     }
 
@@ -140,8 +127,6 @@ public:
     {
         Parameter ret;
         qk_param_add(ret.qiskit_param_.get(), qiskit_param_.get(), prm.qiskit_param_.get());
-        ret.parameter_symbols_ = parameter_symbols_;
-        ret.merge_parameter_symbols(prm);
         return ret;
     }
 
@@ -152,8 +137,6 @@ public:
     {
         Parameter ret;
         qk_param_sub(ret.qiskit_param_.get(), qiskit_param_.get(), prm.qiskit_param_.get());
-        ret.parameter_symbols_ = parameter_symbols_;
-        ret.merge_parameter_symbols(prm);
         return ret;
     }
 
@@ -164,8 +147,6 @@ public:
     {
         Parameter ret;
         qk_param_mul(ret.qiskit_param_.get(), qiskit_param_.get(), prm.qiskit_param_.get());
-        ret.parameter_symbols_ = parameter_symbols_;
-        ret.merge_parameter_symbols(prm);
         return ret;
     }
 
@@ -176,8 +157,6 @@ public:
     {
         Parameter ret;
         qk_param_div(ret.qiskit_param_.get(), qiskit_param_.get(), prm.qiskit_param_.get());
-        ret.parameter_symbols_ = parameter_symbols_;
-        ret.merge_parameter_symbols(prm);
         return ret;
     }
 
@@ -189,7 +168,6 @@ public:
         Parameter ret;
         Parameter rhs(prm);
         qk_param_add(ret.qiskit_param_.get(), qiskit_param_.get(), rhs.qiskit_param_.get());
-        ret.parameter_symbols_ = parameter_symbols_;
         return ret;
     }
 
@@ -201,7 +179,6 @@ public:
         Parameter ret;
         Parameter rhs(prm);
         qk_param_sub(ret.qiskit_param_.get(), qiskit_param_.get(), rhs.qiskit_param_.get());
-        ret.parameter_symbols_ = parameter_symbols_;
         return ret;
     }
 
@@ -213,7 +190,6 @@ public:
         Parameter ret;
         Parameter rhs(prm);
         qk_param_mul(ret.qiskit_param_.get(), qiskit_param_.get(), rhs.qiskit_param_.get());
-        ret.parameter_symbols_ = parameter_symbols_;
         return ret;
     }
 
@@ -225,7 +201,6 @@ public:
         Parameter ret;
         Parameter rhs(prm);
         qk_param_div(ret.qiskit_param_.get(), qiskit_param_.get(), rhs.qiskit_param_.get());
-        ret.parameter_symbols_ = parameter_symbols_;
         return ret;
     }
 
@@ -236,8 +211,6 @@ public:
     {
         Parameter ret;
         qk_param_pow(ret.qiskit_param_.get(), qiskit_param_.get(), prm.qiskit_param_.get());
-        ret.parameter_symbols_ = parameter_symbols_;
-        ret.merge_parameter_symbols(prm);
         return ret;
     }
 
@@ -249,7 +222,6 @@ public:
         Parameter ret;
         Parameter rhs(prm);
         qk_param_pow(ret.qiskit_param_.get(), qiskit_param_.get(), rhs.qiskit_param_.get());
-        ret.parameter_symbols_ = parameter_symbols_;
         return ret;
     }
 
@@ -260,7 +232,6 @@ public:
         if (qiskit_param_)
             qiskit_param_.reset();
         qiskit_param_ = std::shared_ptr<qiskit_param>(qk_param_copy(prm.qiskit_param_.get()), qk_param_free);
-        parameter_symbols_ = prm.parameter_symbols_;
         return *this;
     }
 
@@ -270,7 +241,6 @@ public:
     Parameter &operator+=(const Parameter &rhs)
     {
         qk_param_add(qiskit_param_.get(), qiskit_param_.get(), rhs.qiskit_param_.get());
-        merge_parameter_symbols(rhs);
         return *this;
     }
 
@@ -291,7 +261,6 @@ public:
     Parameter &operator-=(const Parameter &rhs)
     {
         qk_param_sub(qiskit_param_.get(), qiskit_param_.get(), rhs.qiskit_param_.get());
-        merge_parameter_symbols(rhs);
         return *this;
     }
 
@@ -312,7 +281,6 @@ public:
     Parameter &operator*=(const Parameter &rhs)
     {
         qk_param_mul(qiskit_param_.get(), qiskit_param_.get(), rhs.qiskit_param_.get());
-        merge_parameter_symbols(rhs);
         return *this;
     }
 
@@ -333,7 +301,6 @@ public:
     Parameter &operator/=(const Parameter &rhs)
     {
         qk_param_div(qiskit_param_.get(), qiskit_param_.get(), rhs.qiskit_param_.get());
-        merge_parameter_symbols(rhs);
         return *this;
     }
 
@@ -389,7 +356,6 @@ public:
     {
         Parameter ret;
         qk_param_exp(ret.qiskit_param_.get(), qiskit_param_.get());
-        ret.parameter_symbols_ = parameter_symbols_;
         return ret;
     }
 
@@ -399,7 +365,6 @@ public:
     {
         Parameter ret;
         qk_param_log(ret.qiskit_param_.get(), qiskit_param_.get());
-        ret.parameter_symbols_ = parameter_symbols_;
         return ret;
     }
 
@@ -409,7 +374,6 @@ public:
     {
         Parameter ret;
         qk_param_abs(ret.qiskit_param_.get(), qiskit_param_.get());
-        ret.parameter_symbols_ = parameter_symbols_;
         return ret;
     }
 
@@ -419,7 +383,6 @@ public:
     {
         Parameter ret;
         qk_param_sin(ret.qiskit_param_.get(), qiskit_param_.get());
-        ret.parameter_symbols_ = parameter_symbols_;
         return ret;
     }
 
@@ -429,7 +392,6 @@ public:
     {
         Parameter ret;
         qk_param_cos(ret.qiskit_param_.get(), qiskit_param_.get());
-        ret.parameter_symbols_ = parameter_symbols_;
         return ret;
     }
 
@@ -439,7 +401,6 @@ public:
     {
         Parameter ret;
         qk_param_tan(ret.qiskit_param_.get(), qiskit_param_.get());
-        ret.parameter_symbols_ = parameter_symbols_;
         return ret;
     }
 
@@ -449,7 +410,6 @@ public:
     {
         Parameter ret;
         qk_param_asin(ret.qiskit_param_.get(), qiskit_param_.get());
-        ret.parameter_symbols_ = parameter_symbols_;
         return ret;
     }
 
@@ -459,7 +419,6 @@ public:
     {
         Parameter ret;
         qk_param_acos(ret.qiskit_param_.get(), qiskit_param_.get());
-        ret.parameter_symbols_ = parameter_symbols_;
         return ret;
     }
 
@@ -469,7 +428,6 @@ public:
     {
         Parameter ret;
         qk_param_atan(ret.qiskit_param_.get(), qiskit_param_.get());
-        ret.parameter_symbols_ = parameter_symbols_;
         return ret;
     }
 
@@ -479,7 +437,6 @@ public:
     {
         Parameter ret;
         qk_param_sign(ret.qiskit_param_.get(), qiskit_param_.get());
-        ret.parameter_symbols_ = parameter_symbols_;
         return ret;
     }
 
@@ -489,7 +446,6 @@ public:
     {
         Parameter ret;
         qk_param_conjugate(ret.qiskit_param_.get(), qiskit_param_.get());
-        ret.parameter_symbols_ = parameter_symbols_;
         return ret;
     }
 
