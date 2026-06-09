@@ -702,6 +702,29 @@ static int test_to_qasm3_multi_regs(void) {
     return Ok;
 }
 
+static int test_to_qasm3_physical_qubits(void) {
+    auto circ = QuantumCircuit(156, 0);
+    circ.h(21);
+    circ.cx(21, 22);
+
+    std::vector<std::uint32_t> layout({21, 22});
+    circ.set_qiskit_circuit(circ.get_rust_circuit(), layout);
+
+    const auto actual = circ.to_qasm3();
+    const std::string expected =
+        "OPENQASM 3.0;\n"
+        "include \"stdgates.inc\";\n"
+        "h $21;\n"
+        "cx $21, $22;\n";
+    if (actual != expected) {
+        std::cerr << "  to_qasm3_physical_qubits test : \n    expected:\n" << expected
+            << "\n    actual:\n" << actual << std::endl;
+        return EqualityError;
+    }
+
+    return Ok;
+}
+
 static int test_to_qasm3_parameterized_circuit_throws(void) {
     auto qreg = QuantumRegister(1, std::string("qr"));
     auto creg = ClassicalRegister(1, std::string("c"));
@@ -973,6 +996,7 @@ int test_circuit(int argc, char** argv) {
     num_failed += RUN_TEST(test_compose_parameterized_circuit);
     num_failed += RUN_TEST(test_operator_index_parameterized_append);
     num_failed += RUN_TEST(test_to_qasm3_multi_regs);
+    num_failed += RUN_TEST(test_to_qasm3_physical_qubits);
     num_failed += RUN_TEST(test_to_qasm3_parameterized_circuit_throws);
     num_failed += RUN_TEST(test_qasm3_dumps_parameter_expression);
     num_failed += RUN_TEST(test_qasm3_dumps_multiple_parameters);

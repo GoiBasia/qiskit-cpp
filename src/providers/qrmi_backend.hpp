@@ -19,12 +19,15 @@
 
 #include "utils/types.hpp"
 #include "providers/backend.hpp"
+#include "providers/qrmi_estimator_payload.hpp"
 #include "providers/qrmi_job.hpp"
 
 #include <nlohmann/json.hpp>
 
 #include "qrmi.h"
 
+#include <cmath>
+#include <stdexcept>
 
 namespace Qiskit {
 namespace providers {
@@ -124,6 +127,44 @@ public:
         return std::make_shared<providers::QRMIJob>(qrmi_, job_id);
     }
 
+    /// @brief Run and estimate expectation values from each pub.
+    /// @param input_pubs An iterable of estimator pub-like objects.
+    /// @param precision The default target precision for pubs without an explicit precision.
+    /// @return PrimitiveJob
+    std::shared_ptr<providers::Job> run(std::vector<primitives::EstimatorPub>& input_pubs, double precision) override
+    {
+        if (!std::isfinite(precision) || precision < 0.0) {
+            std::cerr << "QRMI Error : estimator precision must be finite and non-negative." << std::endl;
+            return nullptr;
+        }
+
+        nlohmann::ordered_json estimator;
+        try {
+            estimator = QRMIEstimatorPayload::build_estimator_input(input_pubs, precision);
+        } catch (const std::invalid_argument& exc) {
+            std::cerr << "QRMI Error : " << exc.what() << std::endl;
+            return nullptr;
+        }
+        std::string estimator_input = estimator.dump(2);
+        const std::string& program_id = QRMIEstimatorPayload::estimator_program_id();
+
+        QrmiPayload payload;
+        payload.tag = QRMI_PAYLOAD_QISKIT_PRIMITIVE;
+        payload.QISKIT_PRIMITIVE.input = (char*)estimator_input.c_str();
+        payload.QISKIT_PRIMITIVE.program_id = (char*)program_id.c_str();
+
+        char *id = NULL;
+        QrmiReturnCode rc = qrmi_resource_task_start(qrmi_.get(), &payload, &id);
+        if (rc != QRMI_RETURN_CODE_SUCCESS) {
+            std::cerr << "QRMI Error : failed to start an estimator task." << std::endl;
+            return nullptr;
+        }
+        std::string job_id = id;
+        qrmi_string_free((char *)id);
+        std::cerr << " QRMI Estimator job submitted to " << name_ << ", JOB ID = " << job_id << std::endl;
+
+        return std::make_shared<providers::QRMIJob>(qrmi_, job_id);
+    }
 };
 
 } // namespace providers
@@ -131,5 +172,3 @@ public:
 
 
 #endif //__qiskitcpp_providers_backend_def_hpp__
-
-

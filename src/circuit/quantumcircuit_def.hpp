@@ -341,6 +341,20 @@ public:
 		return measure_map_;
 	}
 
+	/// @brief get qubits to be measured
+	/// @return a set of qubits
+	const std::vector<std::pair<uint_t, uint_t>> &get_measure_map(void) const
+	{
+		return measure_map_;
+	}
+
+	/// @brief Return whether this circuit contains measurement operations.
+	/// @return true if there is at least one measurement operation.
+	bool has_measurements(void) const
+	{
+		return !measure_map_.empty();
+	}
+
 	/// @brief set global phase
 	/// @param phase global phase value
 	void global_phase(const double phase)
@@ -1363,19 +1377,19 @@ public:
 				for (uint_t j = 0; j < op->num_clbits; j++) {
 					vclbits[j] = (std::uint32_t)clbits[op->clbits[j]];
 				}
-				}
-				QkOperationKind kind = qk_circuit_instruction_kind(circ.rust_circuit_.get(), i);
-				if (kind == QkOperationKind_Measure) {
-					qk_circuit_measure(rust_circuit_.get(), vqubits[0], vclbits[0]);
-				} else if (kind == QkOperationKind_Reset) {
-					qk_circuit_reset(rust_circuit_.get(), vqubits[0]);
-				} else if (kind == QkOperationKind_Barrier) {
-					qk_circuit_barrier(rust_circuit_.get(), vqubits.data(), (uint32_t)vqubits.size());
-				} else if (kind == QkOperationKind_Gate) {
-					qk_circuit_parameterized_gate(rust_circuit_.get(), name_map[op->name].gate_map(), vqubits.data(), op->params);
-				} else if (kind == QkOperationKind_Unitary) {
-					// TO DO : how we can get unitary matrix from Rust ?
-				}
+			}
+			QkOperationKind kind = qk_circuit_instruction_kind(circ.rust_circuit_.get(), i);
+			if (kind == QkOperationKind_Measure) {
+				qk_circuit_measure(rust_circuit_.get(), vqubits[0], vclbits[0]);
+			} else if (kind == QkOperationKind_Reset) {
+				qk_circuit_reset(rust_circuit_.get(), vqubits[0]);
+			} else if (kind == QkOperationKind_Barrier) {
+				qk_circuit_barrier(rust_circuit_.get(), vqubits.data(), (uint32_t)vqubits.size());
+			} else if (kind == QkOperationKind_Gate) {
+				qk_circuit_parameterized_gate(rust_circuit_.get(), name_map[op->name].gate_map(), vqubits.data(), op->params);
+			} else if (kind == QkOperationKind_Unitary) {
+				// TO DO : how we can get unitary matrix from Rust ?
+			}
 			qk_circuit_instruction_clear(op);
 		}
 
@@ -1521,13 +1535,12 @@ public:
 					clbits[i] = op->clbits[i];
 			}
 
-				std::vector<Parameter> params;
-				if (op->num_params > 0) {
-					params.resize(op->num_params);
-					for (int j = 0; j < op->num_params; j++) {
-						params[j] = Parameter(qk_param_copy(op->params[j]));
-					}
-				}
+			std::vector<Parameter> params;
+			if (op->num_params > 0) {
+				params.resize(op->num_params);
+				for (int i = 0; i < op->num_params; i++)
+					params[i] = Parameter(qk_param_copy(op->params[i]));
+			}
 			std::string name = op->name;
 			qk_circuit_instruction_clear(op);
 

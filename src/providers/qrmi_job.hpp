@@ -17,10 +17,16 @@
 #ifndef __qiskitcpp_providers_QRMI_job_def_hpp__
 #define __qiskitcpp_providers_QRMI_job_def_hpp__
 
+#include <exception>
+#include <iostream>
+#include <stdexcept>
+
 #include <nlohmann/json.hpp>
 
 #include "utils/types.hpp"
 
+#include "primitives/containers/estimator_pub_result.hpp"
+#include "primitives/containers/sampler_pub.hpp"
 #include "primitives/containers/sampler_pub_result.hpp"
 #include "providers/job.hpp"
 
@@ -37,6 +43,7 @@ protected:
     std::shared_ptr<QrmiQuantumResource> qrmi_ = nullptr;
     nlohmann::ordered_json results_;   // json formatted results (raw output from QRMI)
     uint_t num_results_ = 0;
+    bool results_read_ = false;
 public:
     /// @brief Create a new QkrtBackend
     QRMIJob()
@@ -59,7 +66,9 @@ public:
     {
         job_id_ = other.job_id_;
         qrmi_ = other.qrmi_;
-        num_results_ = 0;
+        results_ = other.results_;
+        num_results_ = other.num_results_;
+        results_read_ = other.results_read_;
     }
 
     ~QRMIJob()
@@ -96,8 +105,9 @@ public:
     /// @return number of results
     uint_t num_results(void) override
     {
-        if (num_results_ == 0)
-            read_results();
+        if (!results_read_ && !read_results()) {
+            throw std::runtime_error("QRMIJob failed to read task results.");
+        }
         return num_results_;
     }
 
@@ -107,28 +117,71 @@ public:
     /// @return true if result is successfully set
     bool result(uint_t index, primitives::SamplerPubResult& result) override
     {
-        if (num_results_ == 0)
-            read_results();
+        if (!results_read_ && !read_results())
+            return false;
 
         if (index >= num_results_)
             return false;
 
-        result.from_json(results_["results"][index]);
-        return true;
+        return result.from_json(results_["results"][index]);
+    }
+
+    /// @brief get estimator pub result
+    /// @param index an index of the result
+    /// @param result an output estimator pub result
+    /// @return true if result is successfully set
+    bool result(uint_t index, primitives::EstimatorPubResult& result) override
+    {
+        if (!results_read_ && !read_results())
+            return false;
+
+        if (index >= num_results_)
+            return false;
+
+        return result.from_json(results_["results"][index]);
     }
 
 protected:
-    void read_results(void)
+    bool read_results(void)
     {
+        if (results_read_) {
+            return true;
+        }
+
         char *result = nullptr;
         int rc = qrmi_resource_task_result(qrmi_.get(), job_id_.c_str(), &result);
-        if (rc == QRMI_RETURN_CODE_SUCCESS) {
-            results_ = nlohmann::ordered_json::parse(result);
-
-            num_results_ = results_["results"].size();
-            qrmi_string_free((char *)result);
+        if (rc != QRMI_RETURN_CODE_SUCCESS) {
+            return false;
         }
-        qrmi_resource_task_stop(qrmi_.get(), job_id_.c_str());
+
+        try {
+            results_ = nlohmann::ordered_json::parse(result);
+        } catch (const std::exception& e) {
+            qrmi_string_free((char *)result);
+            stop_task();
+            std::cerr << "QRMI Error : failed to parse task result: " << e.what() << std::endl;
+            return false;
+        }
+
+        qrmi_string_free((char *)result);
+        stop_task();
+
+        if (!results_.is_object() || !results_.contains("results") || !results_["results"].is_array()) {
+            std::cerr << "QRMI Error : task result does not contain a results array." << std::endl;
+            return false;
+        }
+
+        num_results_ = results_["results"].size();
+        results_read_ = true;
+        return true;
+    }
+
+    void stop_task(void)
+    {
+        int rc = qrmi_resource_task_stop(qrmi_.get(), job_id_.c_str());
+        if (rc != QRMI_RETURN_CODE_SUCCESS) {
+            std::cerr << "QRMI Error : failed to stop task after reading results." << std::endl;
+        }
     }
 };
 
@@ -137,5 +190,3 @@ protected:
 
 
 #endif //__qiskitcpp_providers_QRMI_job_def_hpp__
-
-

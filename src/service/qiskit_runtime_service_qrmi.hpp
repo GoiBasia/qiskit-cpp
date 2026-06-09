@@ -19,6 +19,7 @@
 
 #include <fstream>
 #include <iostream>
+#include <cstdlib>
 #include <nlohmann/json.hpp>
 
 #include "utils/types.hpp"
@@ -27,6 +28,9 @@
 #ifdef _MSC_VER
 #define NOMINMAX
 #include <windows.h>
+#ifdef ERROR
+#undef ERROR
+#endif
 #else
 #include <thread>
 #include <chrono>
@@ -175,16 +179,11 @@ public:
         _putenv_s(envCRN.c_str(), instance_.c_str());
         _putenv_s(envSession.c_str(), session_mode_.c_str());
 #else
-        std::string envEndPoint = name + header + "ENDPOINT=" + url_ + "/api/v1";
-        std::string envIAMEndPoint = name + header + "IAM_ENDPOINT=" + iam_url_;
-        std::string envAPIKey = name + header + "IAM_APIKEY=" + token_;
-        std::string envCRN = name + header + "SERVICE_CRN=" + instance_;
-        std::string envSession = name + header + "SESSION_MODE=" + session_mode_;
-        putenv((char*)envEndPoint.c_str());
-        putenv((char*)envIAMEndPoint.c_str());
-        putenv((char*)envAPIKey.c_str());
-        putenv((char*)envCRN.c_str());
-        putenv((char*)envSession.c_str());
+        setenv((name + header + "ENDPOINT").c_str(), (url_ + "/api/v1").c_str(), 1);
+        setenv((name + header + "IAM_ENDPOINT").c_str(), iam_url_.c_str(), 1);
+        setenv((name + header + "IAM_APIKEY").c_str(), token_.c_str(), 1);
+        setenv((name + header + "SERVICE_CRN").c_str(), instance_.c_str(), 1);
+        setenv((name + header + "SESSION_MODE").c_str(), session_mode_.c_str(), 1);
 #endif
         std::shared_ptr<QrmiQuantumResource> qrmi(qrmi_resource_new(name.c_str(), type_), qrmi_resource_free);
         bool is_accessible = false;
@@ -211,5 +210,3 @@ public:
 
 
 #endif //__qiskitcpp_providers_qiskit_runtime_service_QRMI_def_hpp__
-
-

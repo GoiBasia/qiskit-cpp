@@ -446,8 +446,22 @@ private:
 		const uint_t nops = qk_circuit_num_instructions(circuit.rust_circuit_.get());
 
 		const std::string qreg_name = "q";
-		qasm3 << "qubit[" << circuit.num_qubits() << "] " << qreg_name << ";" << std::endl;
+		const bool physical_qubits = !circuit.qubit_map_.empty();
+		auto qubit_ref = [physical_qubits, &qreg_name](uint_t index) -> std::string
+		{
+			if (physical_qubits) {
+				return std::string("$") + std::to_string(index);
+			}
+			return qreg_name + "[" + std::to_string(index) + "]";
+		};
+
+		if (!physical_qubits) {
+			qasm3 << "qubit[" << circuit.num_qubits() << "] " << qreg_name << ";" << std::endl;
+		}
 		for (const auto &creg : circuit.cregs_) {
+			if (creg.size() == 0) {
+				continue;
+			}
 			qasm3 << "bit[" << creg.size() << "] " << creg.name() << ";" << std::endl;
 		}
 
@@ -467,7 +481,7 @@ private:
 				if (op->num_qubits == op->num_clbits) {
 					for (uint_t j = 0; j < op->num_qubits; j++) {
 						const auto creg_data = recover_reg_data(op->clbits[j]);
-						qasm3 << creg_data.first << "[" << creg_data.second << "] = " << op->name << " " << qreg_name << "[" << op->qubits[j] << "];" << std::endl;
+						qasm3 << creg_data.first << "[" << creg_data.second << "] = " << op->name << " " << qubit_ref(op->qubits[j]) << ";" << std::endl;
 					}
 				}
 			} else {
@@ -489,7 +503,7 @@ private:
 				if (op->num_qubits > 0) {
 					qasm3 << " ";
 					for (uint_t j = 0; j < op->num_qubits; j++) {
-						qasm3 << qreg_name << "[" << op->qubits[j] << "]";
+						qasm3 << qubit_ref(op->qubits[j]);
 						if (j != op->num_qubits - 1)
 							qasm3 << ", ";
 					}

@@ -18,6 +18,7 @@
 #define __qiskitcpp_providers_Qiskit_Runtime_job_def_hpp__
 
 #include "utils/types.hpp"
+#include "primitives/containers/sampler_pub.hpp"
 #include "primitives/containers/sampler_pub_result.hpp"
 #include "providers/job.hpp"
 
@@ -131,5 +132,4 @@ public:
 
 
 #endif //__qiskitcpp_providers_Qiskit_Runtime_backend_def_hpp__
-
 

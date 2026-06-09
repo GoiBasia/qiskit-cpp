@@ -3,7 +3,7 @@
 
 # Qiskit C++
 
-Qiskit C++ provides a modern C++ (version C++ 11 or later) interface of Qiskit for circuit building, (transpilation and returning samples of quantum circuit outputs ... to be added in the future release), as same as Qiskit Python interfaces.
+Qiskit C++ provides a modern C++ (version C++ 11 or later) interface of Qiskit for circuit building, transpilation, sampler jobs, and QRMI-backed estimator jobs, as same as Qiskit Python interfaces.
 This interface is based on Qiskit C-API introduced in Qiskit 2.1.
 
 ## Supported OS
@@ -97,7 +97,7 @@ $ cmake -DQISKIT_ROOT=Path_to_qiskit ..
 $ make
 ```
 
-If you want to build sampler or transpiler example, you will need one of qiskit-ibm-runtime C or QRMI or SQC.
+If you want to build sampler or transpiler example, you will need one of qiskit-ibm-runtime C or QRMI or SQC. The estimator example currently requires QRMI.
 
 Then example can be built by setting `QISKIT_IBM_RUNTIME_C_ROOT` or `QRMI_ROOT` or `SQC_ROOT` to cmake.
 
@@ -115,6 +115,8 @@ To run sampler example, set your account information in `$HOME/.qiskit/qiskit-ib
 QISKIT_IBM_TOKEN=<your API key>
 QISKIT_IBM_INSTANCE=<your CRN>
 ```
+
+The estimator interface is available through `primitives::BackendEstimatorV2` and currently requires QRMI or another backend that implements `BackendV2::run(std::vector<EstimatorPub>&, double)`. Estimator PUB circuits must be unmeasured and can use Pauli labels, Pauli-label maps, Pauli term vectors, or `quantum_info::SparseObservable` inputs. Empty observables are rejected before backend submission, and malformed estimator result cardinality is rejected while reading provider results. Estimator job cancellation is not currently supported, so `BackendEstimatorJob::cancel()` returns `false`.
 
 To run the sample example with SQC, you also need to set the library options to the environment variable `SQC_LIBS`, which is automatically set by a provided script (see [here](https://github.com/jhpc-quantum/documents/blob/main/SQC_JHPC_Quantum_user_guide.md)), before running cmake. In SQC 0.10.0, `backend_setup.sh` configures `SQC_LIBS` as follows:
 

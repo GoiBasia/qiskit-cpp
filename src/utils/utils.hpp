@@ -25,6 +25,9 @@
 #elif defined(_MSC_VER)
 #define NOMINMAX
 #include <windows.h>
+#ifdef ERROR
+#undef ERROR
+#endif
 #endif
 
 namespace Qiskit {
@@ -70,15 +73,14 @@ inline bool _naive_parity(uint_t x) {
 
 
 #ifdef INTRINSIC_PARITY
-bool (*hamming_parity)(uint_t) = &_intrinsic_parity;
-uint_t (*popcount)(uint_t) = &_instrinsic_weight;
+static bool (*hamming_parity)(uint_t) = &_intrinsic_parity;
+static uint_t (*popcount)(uint_t) = &_instrinsic_weight;
 #else
-bool (*hamming_parity)(uint_t) = &_naive_parity;
-uint_t (*popcount)(uint_t) = &_naive_weight;
+static bool (*hamming_parity)(uint_t) = &_naive_parity;
+static uint_t (*popcount)(uint_t) = &_naive_weight;
 #endif
 
 
 } // namespace Qiskit
 
 #endif
-
