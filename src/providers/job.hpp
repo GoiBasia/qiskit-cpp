@@ -19,6 +19,8 @@
 
 #include "utils/types.hpp"
 #include "providers/jobstatus.hpp"
+#include "primitives/containers/estimator_pub_result.hpp"
+#include "primitives/containers/sampler_pub.hpp"
 #include "primitives/containers/sampler_pub_result.hpp"
 
 namespace Qiskit {
@@ -32,7 +34,7 @@ public:
     /// @brief Create a new Job
     Job() {}
 
-    ~Job() {}
+    virtual ~Job() {}
 
     /// @brief Return the status of the job.
     /// @return JobStatus enum.
@@ -47,6 +49,15 @@ public:
     /// @param result an output sampler pub result
     /// @return true if result is successfully set
     virtual bool result(uint_t index, primitives::SamplerPubResult& result) = 0;
+
+    /// @brief get estimator pub result
+    /// @param index an index of the result
+    /// @param result an output estimator pub result
+    /// @return true if result is successfully set
+    virtual bool result(uint_t index, primitives::EstimatorPubResult& result)
+    {
+        return false;
+    }
 };
 
 } // namespace providers
@@ -54,5 +65,3 @@ public:
 
 
 #endif //__qiskitcpp_providers_job_def_hpp__
-
-

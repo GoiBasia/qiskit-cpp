@@ -1,0 +1,10 @@
+---
+features:
+  - |
+    Added `primitives::BackendEstimatorV2` with `EstimatorPub`,
+    `BackendEstimatorJob`, and estimator result containers. The QRMI backend
+    can now submit Runtime V2 `estimator` primitive jobs for unmeasured circuits
+    and Pauli observables, returning expectation values through
+    `EstimatorPubResult::evs()`. Empty observables are rejected before backend
+    submission, and estimator result parsing validates that provider `evs` and
+    `stds` cardinality matches the submitted PUB observables.

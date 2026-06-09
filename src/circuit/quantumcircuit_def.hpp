@@ -322,6 +322,20 @@ public:
 		return measure_map_;
 	}
 
+	/// @brief get qubits to be measured
+	/// @return a set of qubits
+	const std::vector<std::pair<uint_t, uint_t>> &get_measure_map(void) const
+	{
+		return measure_map_;
+	}
+
+	/// @brief Return whether this circuit contains measurement operations.
+	/// @return true if there is at least one measurement operation.
+	bool has_measurements(void) const
+	{
+		return !measure_map_.empty();
+	}
+
 	/// @brief set global phase
 	/// @param phase global phase value
 	void global_phase(const double phase)
@@ -1840,10 +1854,25 @@ public:
 
 		// Declare registers
 		// After transpilation, qubit registers will be mapped to physical registers,
-		// so we need to combined them in a single quantum register "q";
+		// so we need to combine them in a single quantum register "q" for ordinary
+		// circuits. Transpiled circuits should use physical qubit references.
 		const std::string qreg_name = "q";
-		qasm3 << "qubit[" << num_qubits() << "] " << qreg_name << ";" << std::endl;
+		const bool physical_qubits = !qubit_map_.empty();
+		auto qubit_ref = [physical_qubits, &qreg_name](uint_t index) -> std::string
+		{
+			if (physical_qubits) {
+				return std::string("$") + std::to_string(index);
+			}
+			return qreg_name + "[" + std::to_string(index) + "]";
+		};
+
+		if (!physical_qubits) {
+			qasm3 << "qubit[" << num_qubits() << "] " << qreg_name << ";" << std::endl;
+		}
 		for(const auto& creg : cregs_) {
+			if (creg.size() == 0) {
+				continue;
+			}
 			qasm3 << "bit[" << creg.size() << "] " << creg.name() << ";" << std::endl;
 		}
 
@@ -1863,7 +1892,7 @@ public:
 				if (op->num_qubits == op->num_clbits) {
 					for (uint_t j = 0; j < op->num_qubits; j++) {
 						const auto creg_data = recover_reg_data(op->clbits[j]);
-						qasm3 << creg_data.first << "[" << creg_data.second << "] = " << op->name << " " << qreg_name << "[" << op->qubits[j] << "];" << std::endl;
+						qasm3 << creg_data.first << "[" << creg_data.second << "] = " << op->name << " " << qubit_ref(op->qubits[j]) << ";" << std::endl;
 					}
 				}
 			} else {
@@ -1886,7 +1915,7 @@ public:
 				if (op->num_qubits > 0) {
 					qasm3 << " ";
 					for (uint_t j = 0; j < op->num_qubits; j++) {
-						qasm3 << qreg_name << "[" << op->qubits[j] << "]";
+						qasm3 << qubit_ref(op->qubits[j]);
 						if (j != op->num_qubits - 1)
 							qasm3 << ", ";
 					}

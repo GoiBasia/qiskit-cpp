@@ -21,6 +21,7 @@
 
 #include "utils/types.hpp"
 
+#include "primitives/containers/sampler_pub.hpp"
 #include "primitives/containers/sampler_pub_result.hpp"
 #include "providers/job.hpp"
 
@@ -100,5 +101,4 @@ public:
 
 
 #endif //__qiskitcpp_providers_SQC_job_hpp__
-
 

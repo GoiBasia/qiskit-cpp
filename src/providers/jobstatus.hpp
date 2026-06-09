@@ -19,6 +19,11 @@
 
 #include "utils/types.hpp"
 
+// Windows headers define ERROR as a macro, which breaks JobStatus::ERROR.
+#ifdef ERROR
+#undef ERROR
+#endif
+
 namespace Qiskit {
 namespace providers {
 
@@ -40,5 +45,4 @@ enum class JobStatus {
 
 
 #endif //__qiskitcpp_providers_jobstatus_def_hpp__
-
 

@@ -48,7 +48,40 @@ public:
 
     SparseObservable(const SparseObservable &other)
     {
-        obs_ = qk_obs_copy(other.obs_);
+        obs_ = other.obs_ ? qk_obs_copy(other.obs_) : nullptr;
+    }
+
+    SparseObservable &operator=(const SparseObservable &other)
+    {
+        if (this != &other)
+        {
+            if (obs_)
+            {
+                qk_obs_free(obs_);
+            }
+            obs_ = other.obs_ ? qk_obs_copy(other.obs_) : nullptr;
+        }
+        return *this;
+    }
+
+    SparseObservable(SparseObservable &&other)
+    {
+        obs_ = other.obs_;
+        other.obs_ = nullptr;
+    }
+
+    SparseObservable &operator=(SparseObservable &&other)
+    {
+        if (this != &other)
+        {
+            if (obs_)
+            {
+                qk_obs_free(obs_);
+            }
+            obs_ = other.obs_;
+            other.obs_ = nullptr;
+        }
+        return *this;
     }
 
     ~SparseObservable()
@@ -73,7 +106,7 @@ public:
         return ret;
     }
 
-    static SparseObservable from_label(std::string &label)
+    static SparseObservable from_label(const std::string &label)
     {
         reg_t indices;
         std::vector<size_t> boundaries(2);
@@ -124,7 +157,7 @@ public:
         return SparseObservable(num_qubits, coeff, terms, indices, boundaries);
     }
 
-    static SparseObservable from_list(std::vector<std::pair<std::string, std::complex<double>>> &list, uint_t num_qubits_in = 0)
+    static SparseObservable from_list(const std::vector<std::pair<std::string, std::complex<double>>> &list, uint_t num_qubits_in = 0)
     {
         reg_t indices;
         std::vector<size_t> boundaries;
@@ -205,16 +238,17 @@ public:
     }
     std::vector<QkBitTerm> bit_terms(void) const
     {
-        std::vector<QkBitTerm> ret(num_terms());
         if (obs_)
         {
+            std::vector<QkBitTerm> ret(qk_obs_len(obs_));
             auto terms = qk_obs_bit_terms(obs_);
             for (int i = 0; i < ret.size(); i++)
             {
                 ret[i] = terms[i];
             }
+            return ret;
         }
-        return ret;
+        return std::vector<QkBitTerm>();
     }
     std::vector<std::complex<double>> coeffs(void) const
     {
@@ -231,29 +265,31 @@ public:
     }
     reg_t indices(void) const
     {
-        reg_t ret(qk_obs_len(obs_));
         if (obs_)
         {
+            reg_t ret(qk_obs_len(obs_));
             auto idx = qk_obs_indices(obs_);
             for (int i = 0; i < ret.size(); i++)
             {
                 ret[i] = idx[i];
             }
+            return ret;
         }
-        return ret;
+        return reg_t();
     }
     reg_t boundaries(void) const
     {
-        reg_t ret(qk_obs_len(obs_));
         if (obs_)
         {
+            reg_t ret(num_terms() + 1);
             auto idx = qk_obs_boundaries(obs_);
             for (int i = 0; i < ret.size(); i++)
             {
                 ret[i] = idx[i];
             }
+            return ret;
         }
-        return ret;
+        return reg_t();
     }
 
     SparseObservable operator+(SparseObservable &rhs)
@@ -303,6 +339,18 @@ public:
         char *str = qk_obs_str(obs_);
         std::string ret = str;
         qk_str_free(str);
+        return ret;
+    }
+
+    SparseObservable apply_layout(const reg_t& layout)
+    {
+        std::vector<uint32_t> layout32(layout.size());
+        for (size_t i = 0; i< layout.size(); i++) {
+            layout32[i] = (uint32_t)layout[i];
+        }
+        SparseObservable ret;
+        ret.obs_ = qk_obs_copy(obs_);
+        qk_obs_apply_layout(ret.obs_, layout32.data(), (uint32_t)layout32.size());
         return ret;
     }
 };

@@ -17,15 +17,11 @@
 #ifndef __qiskitcpp_primitives_qrmi_qiskit_ibm_runtime_job_def_hpp__
 #define __qiskitcpp_primitives_qrmi_qiskit_ibm_runtime_job_def_hpp__
 
-#ifdef _MSC_VER
-#define NOMINMAX
-#include <windows.h>
-#else
-#include <thread>
 #include <chrono>
-#endif
+#include <thread>
 
 
+#include "primitives/containers/sampler_pub.hpp"
 #include "primitives/base/base_primitive_job.hpp"
 #include "providers/backend.hpp"
 #include "providers/job.hpp"
@@ -117,11 +113,7 @@ public:
             st = job_->status();
             if (st == providers::JobStatus::DONE || st == providers::JobStatus::CANCELLED || st == providers::JobStatus::FAILED)
                 break;
-#ifdef _MSC_VER
-            Sleep(1);
-#else
             std::this_thread::sleep_for(std::chrono::seconds(1));
-#endif
         }
 
         PrimitiveResult result;
@@ -143,5 +135,3 @@ public:
 
 
 #endif //__qiskitcpp_primitives_qrmi_qiskit_ibm_runtime_job_def_hpp__
-
-
