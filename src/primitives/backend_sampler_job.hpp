@@ -26,6 +26,7 @@
 #endif
 
 
+#include "primitives/containers/sampler_pub.hpp"
 #include "primitives/base/base_primitive_job.hpp"
 #include "providers/backend.hpp"
 #include "providers/job.hpp"
@@ -143,5 +144,4 @@ public:
 
 
 #endif //__qiskitcpp_primitives_qrmi_qiskit_ibm_runtime_job_def_hpp__
-
 

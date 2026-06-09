@@ -19,6 +19,7 @@
 
 #include "utils/types.hpp"
 #include "transpiler/target.hpp"
+#include "primitives/containers/estimator_pub.hpp"
 #include "primitives/containers/sampler_pub.hpp"
 #include "providers/job.hpp"
 
@@ -67,6 +68,14 @@ public:
     /// @return PrimitiveJob
     virtual std::shared_ptr<providers::Job> run(std::vector<primitives::SamplerPub>& circuits, uint_t shots = 0) = 0;
 
+    /// @brief Run and estimate expectation values from each pub.
+    /// @param pubs An iterable of estimator pub-like objects.
+    /// @return PrimitiveJob
+    virtual std::shared_ptr<providers::Job> run(std::vector<primitives::EstimatorPub>& pubs, double precision)
+    {
+        return nullptr;
+    }
+
 };
 
 } // namespace providers
@@ -74,5 +83,4 @@ public:
 
 
 #endif //__qiskitcpp_providers_backend_def_hpp__
-
 
