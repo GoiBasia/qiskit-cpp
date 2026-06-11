@@ -20,9 +20,9 @@
 #include <memory>
 #include <functional>
 #include <iostream>
-#include <map>
 #include <vector>
 #include <algorithm>
+#include <cctype>
 #include <iomanip>
 #include <cstring>
 #include <cassert>
@@ -94,128 +94,104 @@ protected:
 
 	reg_t qubit_map_;									 // qubit map caused by transpiling
 	std::vector<std::pair<uint_t, uint_t>> measure_map_; // a list of pair of qubit and clbit for measure
-	struct ParameterSymbolData {
-		std::vector<std::string> parameter_symbols; // temporary C++-side symbol list until the C API can enumerate names
-		std::map<std::string, std::shared_ptr<int>> parameter_symbol_refs;
-		std::map<uint_t, std::vector<parameter_symbol_refs_t>> instruction_parameter_symbols;
-	};
-	std::shared_ptr<ParameterSymbolData> parameter_symbol_data_ = std::make_shared<ParameterSymbolData>();
 
-	void append_parameter_symbol(const parameter_symbol_ref_t &symbol)
+	static bool is_parameter_symbol_start(unsigned char c)
 	{
-		auto ref = parameter_symbol_data_->parameter_symbol_refs.find(symbol.first);
-		if (ref != parameter_symbol_data_->parameter_symbol_refs.end()) {
-			if (ref->second != symbol.second) {
-				throw std::invalid_argument(
-					"Duplicate parameter symbols are not supported in Qiskit C++ "
-					"until the Qiskit C API can identify parameters by UUID.");
+		return std::isalpha(c) || c == '_';
+	}
+
+	static bool is_parameter_symbol_char(unsigned char c)
+	{
+		return std::isalnum(c) || c == '_';
+	}
+
+	static bool is_parameter_function_name(const std::string &name)
+	{
+		static const char *function_names[] = {
+			"abs", "acos", "asin", "atan", "conj", "conjugate", "cos",
+			"exp", "log", "sign", "sin", "tan"
+		};
+		return std::find(function_names, function_names + sizeof(function_names) / sizeof(function_names[0]), name)
+			!= function_names + sizeof(function_names) / sizeof(function_names[0]);
+	}
+
+	static bool is_function_call(const std::string &expression, std::size_t token_end, const std::string &token)
+	{
+		if (!is_parameter_function_name(token)) {
+			return false;
+		}
+		while (token_end < expression.size() && std::isspace(static_cast<unsigned char>(expression[token_end]))) {
+			token_end++;
+		}
+		return token_end < expression.size() && expression[token_end] == '(';
+	}
+
+	static void append_unique_parameter_symbol(std::vector<std::string> &parameter_symbols, const std::string &symbol)
+	{
+		if (std::find(parameter_symbols.begin(), parameter_symbols.end(), symbol) == parameter_symbols.end()) {
+			parameter_symbols.push_back(symbol);
+		}
+	}
+
+	void collect_parameter_symbols_from_expression(const std::string &expression, std::vector<std::string> &parameter_symbols) const
+	{
+		for (std::size_t i = 0; i < expression.size();) {
+			const auto c = static_cast<unsigned char>(expression[i]);
+			if (!is_parameter_symbol_start(c)) {
+				i++;
+				continue;
 			}
+			const std::size_t start = i;
+			i++;
+			while (i < expression.size() && is_parameter_symbol_char(static_cast<unsigned char>(expression[i]))) {
+				i++;
+			}
+			const auto token = expression.substr(start, i - start);
+			if (!is_function_call(expression, i, token)) {
+				append_unique_parameter_symbol(parameter_symbols, token);
+			}
+		}
+	}
+
+	std::vector<std::string> collect_parameter_symbols_from_instructions(void) const
+	{
+		std::vector<std::string> parameter_symbols;
+		const auto nops = qk_circuit_num_instructions(rust_circuit_.get());
+		for (uint_t i = 0; i < nops; i++) {
+			QkCircuitInstruction op;
+			qk_circuit_get_instruction(rust_circuit_.get(), i, &op);
+			for (uint_t j = 0; j < op.num_params; j++) {
+				char *expression = qk_param_str(op.params[j]);
+				collect_parameter_symbols_from_expression(expression, parameter_symbols);
+				qk_str_free(expression);
+			}
+			qk_circuit_instruction_clear(&op);
+		}
+		return parameter_symbols;
+	}
+
+	static void check_circuit_parameter_operation(QkExitCode ret)
+	{
+		if (ret == QkExitCode_Success) {
 			return;
 		}
-		parameter_symbol_data_->parameter_symbol_refs[symbol.first] = symbol.second;
-		parameter_symbol_data_->parameter_symbols.push_back(symbol.first);
-	}
-
-	void append_parameter_symbols(const parameter_symbol_refs_t &symbols)
-	{
-		for (const auto &symbol : symbols) {
-			append_parameter_symbol(symbol);
-		}
-	}
-
-	void append_parameter_symbols(const std::vector<parameter_symbol_refs_t> &symbols_by_parameter)
-	{
-		for (const auto &symbols : symbols_by_parameter) {
-			append_parameter_symbols(symbols);
-		}
-	}
-
-	void validate_new_parameter_symbol(const parameter_symbol_ref_t &symbol) const
-	{
-		auto ref = parameter_symbol_data_->parameter_symbol_refs.find(symbol.first);
-		if (ref != parameter_symbol_data_->parameter_symbol_refs.end() && ref->second != symbol.second) {
+		if (ret == QkExitCode_ParameterNameConflict || ret == QkExitCode_ParameterError) {
 			throw std::invalid_argument(
 				"Duplicate parameter symbols are not supported in Qiskit C++ "
 				"until the Qiskit C API can identify parameters by UUID.");
 		}
+		throw std::runtime_error("Qiskit C parameterized gate insertion failed.");
 	}
 
-	void validate_new_parameter_symbols(const std::vector<parameter_symbol_refs_t> &symbols_by_parameter) const
+	QkExitCode add_parameterized_gate(QkGate gate, const std::uint32_t *qubits, QkParam **params)
 	{
-		std::map<std::string, std::shared_ptr<int>> pending_symbol_refs;
-		for (const auto &symbols : symbols_by_parameter) {
-			for (const auto &symbol : symbols) {
-				validate_new_parameter_symbol(symbol);
-				auto ref = pending_symbol_refs.find(symbol.first);
-				if (ref != pending_symbol_refs.end() && ref->second != symbol.second) {
-					throw std::invalid_argument(
-						"Duplicate parameter symbols are not supported in Qiskit C++ "
-						"until the Qiskit C API can identify parameters by UUID.");
-				}
-				pending_symbol_refs[symbol.first] = symbol.second;
-			}
-		}
-	}
+		std::shared_ptr<rust_circuit> preflight(qk_circuit_copy(rust_circuit_.get()), qk_circuit_free);
+		QkExitCode preflight_ret = qk_circuit_parameterized_gate(preflight.get(), gate, qubits, params);
+		check_circuit_parameter_operation(preflight_ret);
 
-	std::vector<parameter_symbol_refs_t> collect_parameter_symbols_by_parameter(const std::vector<Parameter> &parameters) const
-	{
-		std::vector<parameter_symbol_refs_t> symbols_by_parameter;
-		symbols_by_parameter.reserve(parameters.size());
-		for (const auto &parameter : parameters) {
-			symbols_by_parameter.push_back(parameter.parameter_symbol_refs_);
-		}
-		return symbols_by_parameter;
-	}
-
-	template <typename... Params>
-	std::vector<parameter_symbol_refs_t> collect_parameter_symbols_by_parameter(const Params &...parameters) const
-	{
-		return {parameters.parameter_symbol_refs_...};
-	}
-
-	void validate_tracked_parameter_symbols(void) const
-	{
-		const auto num_symbols = qk_circuit_num_param_symbols(rust_circuit_.get());
-		if (parameter_symbol_data_->parameter_symbols.size() != static_cast<std::size_t>(num_symbols)) {
-			throw std::invalid_argument(
-				"Qiskit C++ cannot recover unique circuit parameter symbols. "
-				"Duplicate parameter names are not supported until the Qiskit C API can enumerate parameter names.");
-		}
-	}
-
-	void record_last_instruction_parameter_symbols(const std::vector<parameter_symbol_refs_t> &symbols_by_parameter)
-	{
-		if (symbols_by_parameter.empty()) {
-			return;
-		}
-		validate_new_parameter_symbols(symbols_by_parameter);
-		append_parameter_symbols(symbols_by_parameter);
-		const auto nops = qk_circuit_num_instructions(rust_circuit_.get());
-		if (nops != 0) {
-			parameter_symbol_data_->instruction_parameter_symbols[nops - 1] = symbols_by_parameter;
-		}
-		validate_tracked_parameter_symbols();
-	}
-
-	QkExitCode add_parameterized_gate_with_symbols(
-		QkGate gate,
-		const std::uint32_t *qubits,
-		QkParam **params,
-		const std::vector<parameter_symbol_refs_t> &symbols_by_parameter)
-	{
-		validate_new_parameter_symbols(symbols_by_parameter);
 		QkExitCode ret = qk_circuit_parameterized_gate(rust_circuit_.get(), gate, qubits, params);
-		if (ret == QkExitCode_Success) {
-			record_last_instruction_parameter_symbols(symbols_by_parameter);
-		}
+		check_circuit_parameter_operation(ret);
 		return ret;
-	}
-
-	template <typename... Params>
-	QkExitCode add_parameterized_gate(QkGate gate, const std::uint32_t *qubits, QkParam **params, const Params &...parameters)
-	{
-		const auto symbols_by_parameter = collect_parameter_symbols_by_parameter(parameters...);
-		return add_parameterized_gate_with_symbols(gate, qubits, params, symbols_by_parameter);
 	}
 public:
 	/// @brief Create a new QuantumCircuit
@@ -334,7 +310,6 @@ public:
 
 		measure_map_ = circ.measure_map_;
 		qubit_map_ = circ.qubit_map_;
-		parameter_symbol_data_ = circ.parameter_symbol_data_;
 	}
 
 	~QuantumCircuit()
@@ -413,7 +388,6 @@ public:
 
 		copied.measure_map_ = measure_map_;
 		copied.qubit_map_ = qubit_map_;
-		copied.parameter_symbol_data_ = std::make_shared<ParameterSymbolData>(*parameter_symbol_data_);
 		return copied;
 	}
 
@@ -422,13 +396,9 @@ public:
 	/// @param map layout mapping
 	void set_qiskit_circuit(std::shared_ptr<rust_circuit> circ, const std::vector<uint32_t> &map)
 	{
-		const bool same_circuit = rust_circuit_ && rust_circuit_.get() == circ.get();
 		if (rust_circuit_)
 			rust_circuit_.reset();
 		rust_circuit_ = circ;
-		if (!same_circuit) {
-			parameter_symbol_data_ = std::make_shared<ParameterSymbolData>();
-		}
 		num_qubits_ = qk_circuit_num_qubits(circ.get());
 		num_clbits_ = qk_circuit_num_clbits(circ.get());
 
@@ -551,7 +521,7 @@ public:
 		std::uint32_t qubits[] = {(std::uint32_t)qubit};
 		QkParam* params[] = {phase.qiskit_param_.get()};
 		pre_add_gate();
-		add_parameterized_gate(QkGate_Phase, qubits, params, phase);
+		add_parameterized_gate(QkGate_Phase, qubits, params);
 	}
 
 	/// @brief Apply RGate
@@ -575,7 +545,7 @@ public:
 		std::uint32_t qubits[] = {(std::uint32_t)qubit};
 		QkParam* params[] = {theta.qiskit_param_.get(), phi.qiskit_param_.get()};
 		pre_add_gate();
-		add_parameterized_gate(QkGate_R, qubits, params, theta, phi);
+		add_parameterized_gate(QkGate_R, qubits, params);
 	}
 
 	/// @brief Apply RXGate
@@ -596,7 +566,7 @@ public:
 		std::uint32_t qubits[] = {(std::uint32_t)qubit};
 		QkParam* params[] = {theta.qiskit_param_.get()};
 		pre_add_gate();
-		add_parameterized_gate(QkGate_RX, qubits, params, theta);
+		add_parameterized_gate(QkGate_RX, qubits, params);
 	}
 
 	/// @brief Apply RYGate
@@ -617,7 +587,7 @@ public:
 		std::uint32_t qubits[] = {(std::uint32_t)qubit};
 		QkParam* params[] = {theta.qiskit_param_.get()};
 		pre_add_gate();
-		add_parameterized_gate(QkGate_RY, qubits, params, theta);
+		add_parameterized_gate(QkGate_RY, qubits, params);
 	}
 
 	/// @brief Apply RZGate
@@ -638,7 +608,7 @@ public:
 		std::uint32_t qubits[] = {(std::uint32_t)qubit};
 		QkParam* params[] = {theta.qiskit_param_.get()};
 		pre_add_gate();
-		add_parameterized_gate(QkGate_RZ, qubits, params, theta);
+		add_parameterized_gate(QkGate_RZ, qubits, params);
 	}
 
 	/// @brief Apply SGate
@@ -718,7 +688,7 @@ public:
 		std::uint32_t qubits[] = {(std::uint32_t)qubit};
 		QkParam* params[] = {theta.qiskit_param_.get(), phi.qiskit_param_.get(), lam.qiskit_param_.get()};
 		pre_add_gate();
-		add_parameterized_gate(QkGate_U, qubits, params, theta, phi, lam);
+		add_parameterized_gate(QkGate_U, qubits, params);
 	}
 
 	/// @brief Apply U1Gate
@@ -739,7 +709,7 @@ public:
 		std::uint32_t qubits[] = {(std::uint32_t)qubit};
 		QkParam* params[] = {theta.qiskit_param_.get()};
 		pre_add_gate();
-		add_parameterized_gate(QkGate_U1, qubits, params, theta);
+		add_parameterized_gate(QkGate_U1, qubits, params);
 	}
 
 	/// @brief Apply U2Gate
@@ -763,7 +733,7 @@ public:
 		std::uint32_t qubits[] = {(std::uint32_t)qubit};
 		QkParam* params[] = {phi.qiskit_param_.get(), lam.qiskit_param_.get()};
 		pre_add_gate();
-		add_parameterized_gate(QkGate_U2, qubits, params, phi, lam);
+		add_parameterized_gate(QkGate_U2, qubits, params);
 	}
 
 	/// @brief Apply U3Gate
@@ -789,7 +759,7 @@ public:
 		std::uint32_t qubits[] = {(std::uint32_t)qubit};
 		QkParam* params[] = {theta.qiskit_param_.get(), phi.qiskit_param_.get(), lam.qiskit_param_.get()};
 		pre_add_gate();
-		add_parameterized_gate(QkGate_U3, qubits, params, theta, phi, lam);
+		add_parameterized_gate(QkGate_U3, qubits, params);
 	}
 
 	/// @brief Apply unitary gate specified by unitary to qubits
@@ -905,7 +875,7 @@ public:
 		std::uint32_t qubits[] = {(std::uint32_t)cqubit, (std::uint32_t)tqubit};
 		QkParam* params[] = {phase.qiskit_param_.get()};
 		pre_add_gate();
-		add_parameterized_gate(QkGate_CPhase, qubits, params, phase);
+		add_parameterized_gate(QkGate_CPhase, qubits, params);
 	}
 
 	/// @brief Apply controlled RXGate
@@ -928,7 +898,7 @@ public:
 		std::uint32_t qubits[] = {(std::uint32_t)cqubit, (std::uint32_t)tqubit};
 		QkParam* params[] = {theta.qiskit_param_.get()};
 		pre_add_gate();
-		add_parameterized_gate(QkGate_CRX, qubits, params, theta);
+		add_parameterized_gate(QkGate_CRX, qubits, params);
 	}
 
 	/// @brief Apply controlled RYGate
@@ -951,7 +921,7 @@ public:
 		std::uint32_t qubits[] = {(std::uint32_t)cqubit, (std::uint32_t)tqubit};
 		QkParam* params[] = {theta.qiskit_param_.get()};
 		pre_add_gate();
-		add_parameterized_gate(QkGate_CRY, qubits, params, theta);
+		add_parameterized_gate(QkGate_CRY, qubits, params);
 	}
 
 	/// @brief Apply controlled RZGate
@@ -974,7 +944,7 @@ public:
 		std::uint32_t qubits[] = {(std::uint32_t)cqubit, (std::uint32_t)tqubit};
 		QkParam* params[] = {theta.qiskit_param_.get()};
 		pre_add_gate();
-		add_parameterized_gate(QkGate_CRZ, qubits, params, theta);
+		add_parameterized_gate(QkGate_CRZ, qubits, params);
 	}
 
 	/// @brief Apply CSGate
@@ -1032,7 +1002,7 @@ public:
 		std::uint32_t qubits[] = {(std::uint32_t)cqubit, (std::uint32_t)tqubit};
 		QkParam* params[] = {theta.qiskit_param_.get(), phi.qiskit_param_.get(), lam.qiskit_param_.get()};
 		pre_add_gate();
-		add_parameterized_gate(QkGate_CU, qubits, params, theta, phi, lam);
+		add_parameterized_gate(QkGate_CU, qubits, params);
 	}
 
 	/// @brief Apply CU1Gate
@@ -1056,7 +1026,7 @@ public:
 		std::uint32_t qubits[] = {(std::uint32_t)cqubit, (std::uint32_t)tqubit};
 		QkParam* params[] = {theta.qiskit_param_.get()};
 		pre_add_gate();
-		add_parameterized_gate(QkGate_CU1, qubits, params, theta);
+		add_parameterized_gate(QkGate_CU1, qubits, params);
 	}
 
 	/// @brief Apply CU3Gate
@@ -1084,7 +1054,7 @@ public:
 		std::uint32_t qubits[] = {(std::uint32_t)cqubit, (std::uint32_t)tqubit};
 		QkParam* params[] = {theta.qiskit_param_.get(), phi.qiskit_param_.get(), lam.qiskit_param_.get()};
 		pre_add_gate();
-		add_parameterized_gate(QkGate_CU3, qubits, params, theta, phi, lam);
+		add_parameterized_gate(QkGate_CU3, qubits, params);
 	}
 
 	/// @brief Apply RXXGate
@@ -1107,7 +1077,7 @@ public:
 		std::uint32_t qubits[] = {(std::uint32_t)qubit1, (std::uint32_t)qubit2};
 		QkParam* params[] = {theta.qiskit_param_.get()};
 		pre_add_gate();
-		add_parameterized_gate(QkGate_RXX, qubits, params, theta);
+		add_parameterized_gate(QkGate_RXX, qubits, params);
 	}
 
 	/// @brief Apply RYYGate
@@ -1130,7 +1100,7 @@ public:
 		std::uint32_t qubits[] = {(std::uint32_t)qubit1, (std::uint32_t)qubit2};
 		QkParam* params[] = {theta.qiskit_param_.get()};
 		pre_add_gate();
-		add_parameterized_gate(QkGate_RYY, qubits, params, theta);
+		add_parameterized_gate(QkGate_RYY, qubits, params);
 	}
 
 	/// @brief Apply RZZGate
@@ -1153,7 +1123,7 @@ public:
 		std::uint32_t qubits[] = {(std::uint32_t)qubit1, (std::uint32_t)qubit2};
 		QkParam* params[] = {theta.qiskit_param_.get()};
 		pre_add_gate();
-		add_parameterized_gate(QkGate_RZZ, qubits, params, theta);
+		add_parameterized_gate(QkGate_RZZ, qubits, params);
 	}
 
 	/// @brief Apply RZXGate
@@ -1176,7 +1146,7 @@ public:
 		std::uint32_t qubits[] = {(std::uint32_t)qubit1, (std::uint32_t)qubit2};
 		QkParam* params[] = {theta.qiskit_param_.get()};
 		pre_add_gate();
-		add_parameterized_gate(QkGate_RZX, qubits, params, theta);
+		add_parameterized_gate(QkGate_RZX, qubits, params);
 	}
 
 	/// @brief Apply XXminusYY
@@ -1202,7 +1172,7 @@ public:
 		std::uint32_t qubits[] = {(std::uint32_t)qubit1, (std::uint32_t)qubit2};
 		QkParam* params[] = {theta.qiskit_param_.get(), beta.qiskit_param_.get()};
 		pre_add_gate();
-		add_parameterized_gate(QkGate_XXMinusYY, qubits, params, theta, beta);
+		add_parameterized_gate(QkGate_XXMinusYY, qubits, params);
 	}
 
 	/// @brief Apply XXplusYY
@@ -1228,7 +1198,7 @@ public:
 		std::uint32_t qubits[] = {(std::uint32_t)qubit1, (std::uint32_t)qubit2};
 		QkParam* params[] = {theta.qiskit_param_.get(), beta.qiskit_param_.get()};
 		pre_add_gate();
-		add_parameterized_gate(QkGate_XXPlusYY, qubits, params, theta, beta);
+		add_parameterized_gate(QkGate_XXPlusYY, qubits, params);
 	}
 
 	/// @brief Apply CCXGate
@@ -1402,8 +1372,14 @@ public:
 	/// @return a list of parameter symbol names
 	std::vector<std::string> parameter_symbols(void) const
 	{
-		validate_tracked_parameter_symbols();
-		return parameter_symbol_data_->parameter_symbols;
+		const auto parameter_symbols = collect_parameter_symbols_from_instructions();
+		const auto num_symbols = qk_circuit_num_param_symbols(rust_circuit_.get());
+		if (parameter_symbols.size() != static_cast<std::size_t>(num_symbols)) {
+			throw std::invalid_argument(
+				"Qiskit C++ cannot recover unique circuit parameter symbols until "
+				"the Qiskit C API can enumerate parameter names.");
+		}
+		return parameter_symbols;
 	}
 
 	/// @brief Assign parameters to new parameters or values.
@@ -1519,12 +1495,7 @@ public:
 			} else if (kind == QkOperationKind_Barrier) {
 				qk_circuit_barrier(rust_circuit_.get(), vqubits.data(), (uint32_t)vqubits.size());
 			} else if (kind == QkOperationKind_Gate) {
-				auto symbols = circ.parameter_symbol_data_->instruction_parameter_symbols.find(i);
-				if (symbols != circ.parameter_symbol_data_->instruction_parameter_symbols.end()) {
-					add_parameterized_gate_with_symbols(name_map[op->name].gate_map(), vqubits.data(), op->params, symbols->second);
-				} else {
-					qk_circuit_parameterized_gate(rust_circuit_.get(), name_map[op->name].gate_map(), vqubits.data(), op->params);
-				}
+				add_parameterized_gate(name_map[op->name].gate_map(), vqubits.data(), op->params);
 			} else if (kind == QkOperationKind_Unitary) {
 				// TO DO : how we can get unitary matrix from Rust ?
 			}
@@ -1554,8 +1525,7 @@ public:
 					for (auto &p : op.params()) {
 						params.push_back(p.qiskit_param_.get());
 					}
-					const auto symbols_by_parameter = collect_parameter_symbols_by_parameter(op.params());
-					add_parameterized_gate_with_symbols(op.gate_map(), vqubits.data(), params.data(), symbols_by_parameter);
+					add_parameterized_gate(op.gate_map(), vqubits.data(), params.data());
 				}
 				else
 					qk_circuit_gate(rust_circuit_.get(), op.gate_map(), vqubits.data(), nullptr);
@@ -1584,8 +1554,7 @@ public:
 					for (auto &p : op.params()) {
 						params.push_back(p.qiskit_param_.get());
 					}
-					const auto symbols_by_parameter = collect_parameter_symbols_by_parameter(op.params());
-					add_parameterized_gate_with_symbols(op.gate_map(), qubits.data(), params.data(), symbols_by_parameter);
+					add_parameterized_gate(op.gate_map(), qubits.data(), params.data());
 				}
 				else
 					qk_circuit_gate(rust_circuit_.get(), op.gate_map(), qubits.data(), nullptr);
@@ -1619,8 +1588,7 @@ public:
 				for (auto &p : inst.instruction().params()) {
 					params.push_back(p.qiskit_param_.get());
 				}
-				const auto symbols_by_parameter = collect_parameter_symbols_by_parameter(inst.instruction().params());
-				add_parameterized_gate_with_symbols(inst.instruction().gate_map(), vqubits.data(), params.data(), symbols_by_parameter);
+				add_parameterized_gate(inst.instruction().gate_map(), vqubits.data(), params.data());
 			}
 			else
 				qk_circuit_gate(rust_circuit_.get(), inst.instruction().gate_map(), vqubits.data(), nullptr);
@@ -1681,18 +1649,6 @@ public:
 				params.resize(op->num_params);
 				for (int j = 0; j < op->num_params; j++)
 					params[j] = Parameter(qk_param_copy(op->params[j]));
-				auto symbols = parameter_symbol_data_->instruction_parameter_symbols.find(i);
-				if (symbols != parameter_symbol_data_->instruction_parameter_symbols.end() && symbols->second.size() == params.size()) {
-					for (uint_t j = 0; j < params.size(); j++) {
-						params[j].parameter_symbols_.clear();
-						params[j].parameter_symbol_refs_ = symbols->second[j];
-						for (const auto &symbol : symbols->second[j]) {
-							if (std::find(params[j].parameter_symbols_.begin(), params[j].parameter_symbols_.end(), symbol.first) == params[j].parameter_symbols_.end()) {
-								params[j].parameter_symbols_.push_back(symbol.first);
-							}
-						}
-					}
-				}
 			}
 			std::string name = op->name;
 			qk_circuit_instruction_clear(op);

@@ -827,8 +827,8 @@ static int test_qasm3_dumps_parameter_expression(void) {
     const std::string expected =
         "OPENQASM 3.0;\n"
         "include \"stdgates.inc\";\n"
-        "input float[64] theta;\n"
         "input float[64] phi;\n"
+        "input float[64] theta;\n"
         "qubit[1] q;\n"
         "bit[1] c;\n"
         "rz(phi + theta) q[0];\n";

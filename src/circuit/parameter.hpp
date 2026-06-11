@@ -20,8 +20,8 @@
 #include <algorithm>
 #include <memory>
 #include <complex>
+#include <stdexcept>
 #include <string>
-#include <utility>
 #include <vector>
 
 #include "utils/types.hpp"
@@ -34,37 +34,20 @@ namespace Qiskit
 namespace circuit
 {
 
-using parameter_symbol_ref_t = std::pair<std::string, std::shared_ptr<int>>;
-using parameter_symbol_refs_t = std::vector<parameter_symbol_ref_t>;
-
 class Parameter
 {
     friend class QuantumCircuit;
 protected:
 	std::shared_ptr<qiskit_param> qiskit_param_ = nullptr;
-	std::vector<std::string> parameter_symbols_;
-	parameter_symbol_refs_t parameter_symbol_refs_;
 
-	void copy_parameter_symbols_to(Parameter &dst) const
+	static void check_parameter_operation(QkExitCode ret)
 	{
-		dst.parameter_symbols_ = parameter_symbols_;
-		dst.parameter_symbol_refs_ = parameter_symbol_refs_;
-	}
-
-	void merge_parameter_symbols(const Parameter &rhs)
-	{
-		for (const auto &symbol : rhs.parameter_symbols_) {
-			if (std::find(parameter_symbols_.begin(), parameter_symbols_.end(), symbol) == parameter_symbols_.end()) {
-				parameter_symbols_.push_back(symbol);
-			}
+		if (ret == QkExitCode_Success) {
+			return;
 		}
-		for (const auto &symbol : rhs.parameter_symbol_refs_) {
-			auto ref = std::find_if(parameter_symbol_refs_.begin(), parameter_symbol_refs_.end(),
-				[&symbol](const parameter_symbol_ref_t &value) { return value.second == symbol.second; });
-			if (ref == parameter_symbol_refs_.end()) {
-				parameter_symbol_refs_.push_back(symbol);
-			}
-		}
+		throw std::invalid_argument(
+			"Duplicate parameter symbols are not supported in Qiskit C++ "
+			"until the Qiskit C API can identify parameters by UUID.");
 	}
 public:
     /// @brief Create a new Parameter
@@ -99,8 +82,6 @@ public:
 	Parameter(std::string name)
 	{
 		qiskit_param_ = std::shared_ptr<qiskit_param>(qk_param_new_symbol((char *)name.c_str()), qk_param_free);
-		parameter_symbols_.push_back(name);
-		parameter_symbol_refs_.push_back(std::make_pair(name, std::make_shared<int>(0)));
 	}
 
     /// @brief Create a new Parameter from other Parameter
@@ -109,8 +90,6 @@ public:
 	{
 		// copying reference
 		qiskit_param_ = prm.qiskit_param_;
-		parameter_symbols_ = prm.parameter_symbols_;
-		parameter_symbol_refs_ = prm.parameter_symbol_refs_;
 	}
 
     /// @brief Create a new Parameter from QkParam
@@ -149,8 +128,7 @@ public:
 	Parameter operator-()
 	{
 		Parameter ret;
-		qk_param_neg(ret.qiskit_param_.get(), qiskit_param_.get());
-		copy_parameter_symbols_to(ret);
+		check_parameter_operation(qk_param_neg(ret.qiskit_param_.get(), qiskit_param_.get()));
 		return ret;
 	}
 
@@ -160,9 +138,7 @@ public:
 	Parameter operator+(const Parameter &prm)
 	{
 		Parameter ret;
-		qk_param_add(ret.qiskit_param_.get(), qiskit_param_.get(), prm.qiskit_param_.get());
-		copy_parameter_symbols_to(ret);
-		ret.merge_parameter_symbols(prm);
+		check_parameter_operation(qk_param_add(ret.qiskit_param_.get(), qiskit_param_.get(), prm.qiskit_param_.get()));
 		return ret;
 	}
 
@@ -172,9 +148,7 @@ public:
 	Parameter operator-(const Parameter &prm)
 	{
 		Parameter ret;
-		qk_param_sub(ret.qiskit_param_.get(), qiskit_param_.get(), prm.qiskit_param_.get());
-		copy_parameter_symbols_to(ret);
-		ret.merge_parameter_symbols(prm);
+		check_parameter_operation(qk_param_sub(ret.qiskit_param_.get(), qiskit_param_.get(), prm.qiskit_param_.get()));
 		return ret;
 	}
 
@@ -184,9 +158,7 @@ public:
 	Parameter operator*(const Parameter &prm)
 	{
 		Parameter ret;
-		qk_param_mul(ret.qiskit_param_.get(), qiskit_param_.get(), prm.qiskit_param_.get());
-		copy_parameter_symbols_to(ret);
-		ret.merge_parameter_symbols(prm);
+		check_parameter_operation(qk_param_mul(ret.qiskit_param_.get(), qiskit_param_.get(), prm.qiskit_param_.get()));
 		return ret;
 	}
 
@@ -196,9 +168,7 @@ public:
 	Parameter operator/(const Parameter &prm)
 	{
 		Parameter ret;
-		qk_param_div(ret.qiskit_param_.get(), qiskit_param_.get(), prm.qiskit_param_.get());
-		copy_parameter_symbols_to(ret);
-		ret.merge_parameter_symbols(prm);
+		check_parameter_operation(qk_param_div(ret.qiskit_param_.get(), qiskit_param_.get(), prm.qiskit_param_.get()));
 		return ret;
 	}
 
@@ -209,8 +179,7 @@ public:
 	{
 		Parameter ret;
 		Parameter rhs(prm);
-		qk_param_add(ret.qiskit_param_.get(), qiskit_param_.get(), rhs.qiskit_param_.get());
-		copy_parameter_symbols_to(ret);
+		check_parameter_operation(qk_param_add(ret.qiskit_param_.get(), qiskit_param_.get(), rhs.qiskit_param_.get()));
 		return ret;
 	}
 
@@ -221,8 +190,7 @@ public:
 	{
 		Parameter ret;
 		Parameter rhs(prm);
-		qk_param_sub(ret.qiskit_param_.get(), qiskit_param_.get(), rhs.qiskit_param_.get());
-		copy_parameter_symbols_to(ret);
+		check_parameter_operation(qk_param_sub(ret.qiskit_param_.get(), qiskit_param_.get(), rhs.qiskit_param_.get()));
 		return ret;
 	}
 
@@ -233,8 +201,7 @@ public:
 	{
 		Parameter ret;
 		Parameter rhs(prm);
-		qk_param_mul(ret.qiskit_param_.get(), qiskit_param_.get(), rhs.qiskit_param_.get());
-		copy_parameter_symbols_to(ret);
+		check_parameter_operation(qk_param_mul(ret.qiskit_param_.get(), qiskit_param_.get(), rhs.qiskit_param_.get()));
 		return ret;
 	}
 
@@ -245,8 +212,7 @@ public:
 	{
 		Parameter ret;
 		Parameter rhs(prm);
-		qk_param_div(ret.qiskit_param_.get(), qiskit_param_.get(), rhs.qiskit_param_.get());
-		copy_parameter_symbols_to(ret);
+		check_parameter_operation(qk_param_div(ret.qiskit_param_.get(), qiskit_param_.get(), rhs.qiskit_param_.get()));
 		return ret;
 	}
 
@@ -256,9 +222,7 @@ public:
 	Parameter pow(const Parameter &prm)
 	{
 		Parameter ret;
-		qk_param_pow(ret.qiskit_param_.get(), qiskit_param_.get(), prm.qiskit_param_.get());
-		copy_parameter_symbols_to(ret);
-		ret.merge_parameter_symbols(prm);
+		check_parameter_operation(qk_param_pow(ret.qiskit_param_.get(), qiskit_param_.get(), prm.qiskit_param_.get()));
 		return ret;
 	}
 
@@ -269,8 +233,7 @@ public:
 	{
 		Parameter ret;
 		Parameter rhs(prm);
-		qk_param_pow(ret.qiskit_param_.get(), qiskit_param_.get(), rhs.qiskit_param_.get());
-		copy_parameter_symbols_to(ret);
+		check_parameter_operation(qk_param_pow(ret.qiskit_param_.get(), qiskit_param_.get(), rhs.qiskit_param_.get()));
 		return ret;
 	}
 
@@ -281,8 +244,6 @@ public:
 		if (qiskit_param_)
 			qiskit_param_.reset();
 		qiskit_param_ = std::shared_ptr<qiskit_param>(qk_param_copy(prm.qiskit_param_.get()), qk_param_free);
-		parameter_symbols_ = prm.parameter_symbols_;
-		parameter_symbol_refs_ = prm.parameter_symbol_refs_;
 		return *this;
 	}
 
@@ -291,8 +252,7 @@ public:
 	/// @return a reference to this
 	Parameter &operator+=(const Parameter &rhs)
 	{
-		qk_param_add(qiskit_param_.get(), qiskit_param_.get(), rhs.qiskit_param_.get());
-		merge_parameter_symbols(rhs);
+		check_parameter_operation(qk_param_add(qiskit_param_.get(), qiskit_param_.get(), rhs.qiskit_param_.get()));
 		return *this;
 	}
 
@@ -300,20 +260,19 @@ public:
     /// @param rhs a value to be added
 	/// @return a reference to this
     Parameter &operator+=(const double rhs)
-    {
-        qiskit_param* rval = qk_param_from_double(rhs);
-        qk_param_add(qiskit_param_.get(), qiskit_param_.get(), rval);
-        qk_param_free(rval);
-        return *this;
-    }
+	{
+	        qiskit_param* rval = qk_param_from_double(rhs);
+	        check_parameter_operation(qk_param_add(qiskit_param_.get(), qiskit_param_.get(), rval));
+	        qk_param_free(rval);
+	        return *this;
+	    }
 
     /// @brief subtract this Parameter and other Parameter
     /// @param rhs a Parameter to be subtracted
 	/// @return a reference to this
 	Parameter &operator-=(const Parameter &rhs)
 	{
-		qk_param_sub(qiskit_param_.get(), qiskit_param_.get(), rhs.qiskit_param_.get());
-		merge_parameter_symbols(rhs);
+		check_parameter_operation(qk_param_sub(qiskit_param_.get(), qiskit_param_.get(), rhs.qiskit_param_.get()));
 		return *this;
 	}
 
@@ -321,20 +280,19 @@ public:
     /// @param rhs a value to be subtracted
 	/// @return a reference to this
     Parameter &operator-=(const double rhs)
-    {
-        qiskit_param* rval = qk_param_from_double(rhs);
-        qk_param_sub(qiskit_param_.get(), qiskit_param_.get(), rval);
-        qk_param_free(rval);
-        return *this;
-    }
+	{
+	        qiskit_param* rval = qk_param_from_double(rhs);
+	        check_parameter_operation(qk_param_sub(qiskit_param_.get(), qiskit_param_.get(), rval));
+	        qk_param_free(rval);
+	        return *this;
+	    }
 
     /// @brief multiply other Parameter to this Parameter
     /// @param rhs a Parameter to be multiplied
 	/// @return a reference to this
 	Parameter &operator*=(const Parameter &rhs)
 	{
-		qk_param_mul(qiskit_param_.get(), qiskit_param_.get(), rhs.qiskit_param_.get());
-		merge_parameter_symbols(rhs);
+		check_parameter_operation(qk_param_mul(qiskit_param_.get(), qiskit_param_.get(), rhs.qiskit_param_.get()));
 		return *this;
 	}
 
@@ -342,20 +300,19 @@ public:
     /// @param rhs a value to be multiplied
 	/// @return a reference to this
     Parameter &operator*=(const double rhs)
-    {
-        qiskit_param* rval = qk_param_from_double(rhs);
-        qk_param_mul(qiskit_param_.get(), qiskit_param_.get(), rval);
-        qk_param_free(rval);
-        return *this;
-    }
+	{
+	        qiskit_param* rval = qk_param_from_double(rhs);
+	        check_parameter_operation(qk_param_mul(qiskit_param_.get(), qiskit_param_.get(), rval));
+	        qk_param_free(rval);
+	        return *this;
+	    }
 
     /// @brief divide this Parameter by other Parameter
     /// @param rhs a Parameter to be divided by
 	/// @return a reference to this
 	Parameter &operator/=(const Parameter &rhs)
 	{
-		qk_param_div(qiskit_param_.get(), qiskit_param_.get(), rhs.qiskit_param_.get());
-		merge_parameter_symbols(rhs);
+		check_parameter_operation(qk_param_div(qiskit_param_.get(), qiskit_param_.get(), rhs.qiskit_param_.get()));
 		return *this;
 	}
 
@@ -363,12 +320,12 @@ public:
     /// @param rhs a value to be divided by
 	/// @return a reference to this
     Parameter &operator/=(const double rhs)
-    {
-        qiskit_param* rval = qk_param_from_double(rhs);
-        qk_param_div(qiskit_param_.get(), qiskit_param_.get(), rval);
-        qk_param_free(rval);
-        return *this;
-    }
+	{
+	        qiskit_param* rval = qk_param_from_double(rhs);
+	        check_parameter_operation(qk_param_div(qiskit_param_.get(), qiskit_param_.get(), rval));
+	        qk_param_free(rval);
+	        return *this;
+	    }
 
     /// @brief compare 2 Parameters
     /// @param rhs a Parameter to be compared
@@ -410,8 +367,7 @@ public:
 	Parameter exp(void)
 	{
 		Parameter ret;
-		qk_param_exp(ret.qiskit_param_.get(), qiskit_param_.get());
-		copy_parameter_symbols_to(ret);
+		check_parameter_operation(qk_param_exp(ret.qiskit_param_.get(), qiskit_param_.get()));
 		return ret;
 	}
 
@@ -420,8 +376,7 @@ public:
 	Parameter log(void)
 	{
 		Parameter ret;
-		qk_param_log(ret.qiskit_param_.get(), qiskit_param_.get());
-		copy_parameter_symbols_to(ret);
+		check_parameter_operation(qk_param_log(ret.qiskit_param_.get(), qiskit_param_.get()));
 		return ret;
 	}
 
@@ -430,8 +385,7 @@ public:
 	Parameter abs(void)
 	{
 		Parameter ret;
-		qk_param_abs(ret.qiskit_param_.get(), qiskit_param_.get());
-		copy_parameter_symbols_to(ret);
+		check_parameter_operation(qk_param_abs(ret.qiskit_param_.get(), qiskit_param_.get()));
 		return ret;
 	}
 
@@ -440,8 +394,7 @@ public:
 	Parameter sin(void)
 	{
 		Parameter ret;
-		qk_param_sin(ret.qiskit_param_.get(), qiskit_param_.get());
-		copy_parameter_symbols_to(ret);
+		check_parameter_operation(qk_param_sin(ret.qiskit_param_.get(), qiskit_param_.get()));
 		return ret;
 	}
 
@@ -450,8 +403,7 @@ public:
 	Parameter cos(void)
 	{
 		Parameter ret;
-		qk_param_cos(ret.qiskit_param_.get(), qiskit_param_.get());
-		copy_parameter_symbols_to(ret);
+		check_parameter_operation(qk_param_cos(ret.qiskit_param_.get(), qiskit_param_.get()));
 		return ret;
 	}
 
@@ -460,8 +412,7 @@ public:
 	Parameter tan(void)
 	{
 		Parameter ret;
-		qk_param_tan(ret.qiskit_param_.get(), qiskit_param_.get());
-		copy_parameter_symbols_to(ret);
+		check_parameter_operation(qk_param_tan(ret.qiskit_param_.get(), qiskit_param_.get()));
 		return ret;
 	}
 
@@ -470,8 +421,7 @@ public:
 	Parameter asin(void)
 	{
 		Parameter ret;
-		qk_param_asin(ret.qiskit_param_.get(), qiskit_param_.get());
-		copy_parameter_symbols_to(ret);
+		check_parameter_operation(qk_param_asin(ret.qiskit_param_.get(), qiskit_param_.get()));
 		return ret;
 	}
 
@@ -480,8 +430,7 @@ public:
 	Parameter acos(void)
 	{
 		Parameter ret;
-		qk_param_acos(ret.qiskit_param_.get(), qiskit_param_.get());
-		copy_parameter_symbols_to(ret);
+		check_parameter_operation(qk_param_acos(ret.qiskit_param_.get(), qiskit_param_.get()));
 		return ret;
 	}
 
@@ -490,8 +439,7 @@ public:
 	Parameter atan(void)
 	{
 		Parameter ret;
-		qk_param_atan(ret.qiskit_param_.get(), qiskit_param_.get());
-		copy_parameter_symbols_to(ret);
+		check_parameter_operation(qk_param_atan(ret.qiskit_param_.get(), qiskit_param_.get()));
 		return ret;
 	}
 
@@ -500,8 +448,7 @@ public:
 	Parameter sign(void)
 	{
 		Parameter ret;
-		qk_param_sign(ret.qiskit_param_.get(), qiskit_param_.get());
-		copy_parameter_symbols_to(ret);
+		check_parameter_operation(qk_param_sign(ret.qiskit_param_.get(), qiskit_param_.get()));
 		return ret;
 	}
 
@@ -510,8 +457,7 @@ public:
 	Parameter conjugate(void)
 	{
 		Parameter ret;
-		qk_param_conjugate(ret.qiskit_param_.get(), qiskit_param_.get());
-		copy_parameter_symbols_to(ret);
+		check_parameter_operation(qk_param_conjugate(ret.qiskit_param_.get(), qiskit_param_.get()));
 		return ret;
 	}
 
