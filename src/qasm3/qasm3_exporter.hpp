@@ -110,13 +110,7 @@ private:
 
 	std::vector<std::string> default_parameter_names(circuit::QuantumCircuit &circuit) const
 	{
-		const auto num_symbols = qk_circuit_num_param_symbols(circuit.rust_circuit_.get());
-		if (num_symbols != 0) {
-			throw std::runtime_error(
-				"automatic OpenQASM 3 parameter-name export requires qk_circuit_param_symbol_name from Qiskit. "
-				"Use Qiskit::qasm3::dumps(circuit, parameter_names) for now.");
-		}
-		return {};
+		return circuit.parameter_symbols();
 	}
 
 	void validate_parameter_names(circuit::QuantumCircuit &circuit, const std::vector<std::string> &parameter_names) const

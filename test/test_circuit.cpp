@@ -626,7 +626,7 @@ static int test_compose_parameterized_circuit(void) {
 
     circ.compose(sub, reg_t({0}), reg_t({0}));
 
-    const auto actual = qasm3::dumps(circ, {"theta"});
+    const auto actual = circ.to_qasm3();
     const std::string expected =
         "OPENQASM 3.0;\n"
         "include \"stdgates.inc\";\n"
@@ -656,7 +656,7 @@ static int test_operator_index_parameterized_append(void) {
 
     dst.append(src[0]);
 
-    const auto actual = qasm3::dumps(dst, {"theta"});
+    const auto actual = dst.to_qasm3();
     const std::string expected =
         "OPENQASM 3.0;\n"
         "include \"stdgates.inc\";\n"
@@ -725,7 +725,7 @@ static int test_to_qasm3_physical_qubits(void) {
     return Ok;
 }
 
-static int test_to_qasm3_parameterized_circuit_throws(void) {
+static int test_to_qasm3_parameterized_circuit(void) {
     auto qreg = QuantumRegister(1, std::string("qr"));
     auto creg = ClassicalRegister(1, std::string("c"));
     QuantumCircuit circ(qreg, creg);
@@ -733,15 +733,82 @@ static int test_to_qasm3_parameterized_circuit_throws(void) {
     Parameter theta("theta");
     circ.rx(theta, 0);
 
-    bool threw = false;
-    try {
-        circ.to_qasm3();
-    } catch (const std::runtime_error &) {
-        threw = true;
+    const auto symbols = circ.parameter_symbols();
+    if (symbols != std::vector<std::string>({"theta"})) {
+        std::cerr << "  to_qasm3_parameterized_circuit test : unexpected parameter symbol list" << std::endl;
+        return EqualityError;
     }
-    if (!threw) {
-        std::cerr << "  to_qasm3_parameterized_circuit_throws test : parameterized default export did not throw" << std::endl;
-        return RuntimeError;
+
+    const auto actual = circ.to_qasm3();
+    const std::string expected =
+        "OPENQASM 3.0;\n"
+        "include \"stdgates.inc\";\n"
+        "input float[64] theta;\n"
+        "qubit[1] q;\n"
+        "bit[1] c;\n"
+        "rx(theta) q[0];\n";
+    if (actual != expected) {
+        std::cerr << "  to_qasm3_parameterized_circuit test : \n    expected:\n" << expected
+            << "\n    actual:\n" << actual << std::endl;
+        return EqualityError;
+    }
+
+    return Ok;
+}
+
+static int test_qasm3_shallow_copy_parameter_symbols(void) {
+    QuantumCircuit original(1, 0);
+
+    Parameter theta("theta");
+    original.rx(theta, 0);
+
+    QuantumCircuit alias(original);
+    Parameter phi("phi");
+    alias.ry(phi, 0);
+
+    QuantumCircuit assigned(1, 0);
+    assigned = original;
+    Parameter lam("lam");
+    assigned.rz(lam, 0);
+
+    const auto actual = original.to_qasm3();
+    const std::string expected =
+        "OPENQASM 3.0;\n"
+        "include \"stdgates.inc\";\n"
+        "input float[64] theta;\n"
+        "input float[64] phi;\n"
+        "input float[64] lam;\n"
+        "qubit[1] q;\n"
+        "rx(theta) q[0];\n"
+        "ry(phi) q[0];\n"
+        "rz(lam) q[0];\n";
+    if (actual != expected) {
+        std::cerr << "  qasm3_shallow_copy_parameter_symbols test : \n    expected:\n" << expected
+            << "\n    actual:\n" << actual << std::endl;
+        return EqualityError;
+    }
+
+    return Ok;
+}
+
+static int test_qasm3_parameterized_physical_qubits(void) {
+    auto circ = QuantumCircuit(156, 0);
+    Parameter theta("theta");
+    circ.rx(theta, 21);
+
+    std::vector<std::uint32_t> layout({21});
+    circ.set_qiskit_circuit(circ.get_rust_circuit(), layout);
+
+    const auto actual = circ.to_qasm3();
+    const std::string expected =
+        "OPENQASM 3.0;\n"
+        "include \"stdgates.inc\";\n"
+        "input float[64] theta;\n"
+        "rx(theta) $21;\n";
+    if (actual != expected) {
+        std::cerr << "  qasm3_parameterized_physical_qubits test : \n    expected:\n" << expected
+            << "\n    actual:\n" << actual << std::endl;
+        return EqualityError;
     }
 
     return Ok;
@@ -756,7 +823,7 @@ static int test_qasm3_dumps_parameter_expression(void) {
     Parameter phi("phi");
     circ.rz(theta + phi, 0);
 
-    const auto actual = qasm3::dumps(circ, {"theta", "phi"});
+    const auto actual = qasm3::dumps(circ);
     const std::string expected =
         "OPENQASM 3.0;\n"
         "include \"stdgates.inc\";\n"
@@ -784,7 +851,7 @@ static int test_qasm3_dumps_multiple_parameters(void) {
     circ.rx(phi, 0);
     circ.ry(theta, 0);
 
-    const auto actual = qasm3::dumps(circ, {"phi", "theta"});
+    const auto actual = qasm3::dumps(circ);
     const std::string expected =
         "OPENQASM 3.0;\n"
         "include \"stdgates.inc\";\n"
@@ -836,7 +903,7 @@ static int test_qasm3_dumps_parameterized_u(void) {
     Parameter lam("lam");
     circ.u(theta, phi, lam, 0);
 
-    const auto actual = qasm3::dumps(circ, {"theta", "phi", "lam"});
+    const auto actual = qasm3::dumps(circ);
     const std::string expected =
         "OPENQASM 3.0;\n"
         "include \"stdgates.inc\";\n"
@@ -880,25 +947,14 @@ static int test_qasm3_dumps_explicit_parameter_names(void) {
     return Ok;
 }
 
-static int test_qasm3_dumps_missing_default_parameter_names(void) {
+static int test_qasm3_dumps_default_parameter_names(void) {
     auto qreg = QuantumRegister(1, std::string("qr"));
     auto creg = ClassicalRegister(1, std::string("c"));
     QuantumCircuit circ(qreg, creg);
     Parameter theta("theta");
     circ.rx(theta, 0);
 
-    bool threw = false;
-    try {
-        qasm3::dumps(circ);
-    } catch (const std::runtime_error &) {
-        threw = true;
-    }
-    if (!threw) {
-        std::cerr << "  qasm3_dumps_missing_default_parameter_names test : parameterized default export did not throw" << std::endl;
-        return RuntimeError;
-    }
-
-    const auto actual = qasm3::dumps(circ, {"theta"});
+    const auto actual = qasm3::dumps(circ);
     const std::string expected =
         "OPENQASM 3.0;\n"
         "include \"stdgates.inc\";\n"
@@ -907,7 +963,7 @@ static int test_qasm3_dumps_missing_default_parameter_names(void) {
         "bit[1] c;\n"
         "rx(theta) q[0];\n";
     if (actual != expected) {
-        std::cerr << "  qasm3_dumps_missing_default_parameter_names test : \n    expected:\n" << expected
+        std::cerr << "  qasm3_dumps_default_parameter_names test : \n    expected:\n" << expected
             << "\n    actual:\n" << actual << std::endl;
         return EqualityError;
     }
@@ -980,6 +1036,62 @@ static int test_qasm3_dumps_invalid_parameter_names(void) {
         return RuntimeError;
     }
 
+    QuantumCircuit duplicate_symbols(2, 0);
+    Parameter a0("a");
+    Parameter a1("a");
+    threw = false;
+    try {
+        duplicate_symbols.ry(a0, 0);
+        duplicate_symbols.ry(a1, 1);
+    } catch (const std::invalid_argument &) {
+        threw = true;
+    }
+    if (!threw) {
+        std::cerr << "  qasm3_dumps_invalid_parameter_names test : duplicate circuit parameter symbols did not throw" << std::endl;
+        return RuntimeError;
+    }
+    if (duplicate_symbols.num_instructions() != 1) {
+        std::cerr << "  qasm3_dumps_invalid_parameter_names test : duplicate circuit symbol rejection mutated the circuit incorrectly" << std::endl;
+        return RuntimeError;
+    }
+
+    QuantumCircuit duplicate_gate_symbols(1, 0);
+    Parameter gate_a0("a");
+    Parameter gate_a1("a");
+    Parameter gate_b("b");
+    threw = false;
+    try {
+        duplicate_gate_symbols.u(gate_a0, gate_a1, gate_b, 0);
+    } catch (const std::invalid_argument &) {
+        threw = true;
+    }
+    if (!threw) {
+        std::cerr << "  qasm3_dumps_invalid_parameter_names test : duplicate symbols in one gate did not throw" << std::endl;
+        return RuntimeError;
+    }
+    if (duplicate_gate_symbols.num_instructions() != 0) {
+        std::cerr << "  qasm3_dumps_invalid_parameter_names test : duplicate gate symbol rejection mutated the circuit" << std::endl;
+        return RuntimeError;
+    }
+
+    QuantumCircuit duplicate_expression_symbols(1, 0);
+    Parameter expr_a0("a");
+    Parameter expr_a1("a");
+    threw = false;
+    try {
+        duplicate_expression_symbols.rz(expr_a0 + expr_a1, 0);
+    } catch (const std::invalid_argument &) {
+        threw = true;
+    }
+    if (!threw) {
+        std::cerr << "  qasm3_dumps_invalid_parameter_names test : duplicate symbols in one expression did not throw" << std::endl;
+        return RuntimeError;
+    }
+    if (duplicate_expression_symbols.num_instructions() != 0) {
+        std::cerr << "  qasm3_dumps_invalid_parameter_names test : duplicate expression symbol rejection mutated the circuit" << std::endl;
+        return RuntimeError;
+    }
+
     return Ok;
 }
 
@@ -997,13 +1109,15 @@ int test_circuit(int argc, char** argv) {
     num_failed += RUN_TEST(test_operator_index_parameterized_append);
     num_failed += RUN_TEST(test_to_qasm3_multi_regs);
     num_failed += RUN_TEST(test_to_qasm3_physical_qubits);
-    num_failed += RUN_TEST(test_to_qasm3_parameterized_circuit_throws);
+    num_failed += RUN_TEST(test_to_qasm3_parameterized_circuit);
+    num_failed += RUN_TEST(test_qasm3_shallow_copy_parameter_symbols);
+    num_failed += RUN_TEST(test_qasm3_parameterized_physical_qubits);
     num_failed += RUN_TEST(test_qasm3_dumps_parameter_expression);
     num_failed += RUN_TEST(test_qasm3_dumps_multiple_parameters);
     num_failed += RUN_TEST(test_qasm3_dumps_numeric_parameter);
     num_failed += RUN_TEST(test_qasm3_dumps_parameterized_u);
     num_failed += RUN_TEST(test_qasm3_dumps_explicit_parameter_names);
-    num_failed += RUN_TEST(test_qasm3_dumps_missing_default_parameter_names);
+    num_failed += RUN_TEST(test_qasm3_dumps_default_parameter_names);
     num_failed += RUN_TEST(test_qasm3_dumps_invalid_parameter_names);
 
     std::cerr << "=== Number of failed subtests: " << num_failed << std::endl;
